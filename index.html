@@ -81,7 +81,7 @@
             const [selectedSong, setSelectedSong] = React.useState(null);
             const [latestDate, setLatestDate] = React.useState(null);
             const [statsData, setStatsData] = React.useState({
-                headers: ['Total', 'Lead', 'Solo', 'Features'],
+                headers: ['Total', 'As lead', 'Solo', 'As feature (*)'],
                 rows: [
                     { label: 'Streams', values: [0, 0, 0, 0] },
                     { label: 'Daily', values: [0, 0, 0, 0] },
@@ -151,8 +151,8 @@
                                 parsedData.forEach(row => {
                                     const title = row.Song || '';
                                     const album = row.Album || '';
-                                    if (title) {
-                                        // Use title for "Already Rich", title+album for others
+                                    const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
+                                    if (title && daily > 0) {
                                         const key = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
                                         if (!rawHistory[key]) {
                                             rawHistory[key] = [];
@@ -160,7 +160,7 @@
                                         rawHistory[key].push({
                                             date: dateStr,
                                             streams: parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0,
-                                            daily: parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0,
+                                            daily: daily,
                                             album: album
                                         });
                                     }
@@ -188,11 +188,12 @@
                         throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2024-01-01.csv to 2025-04-14.csv in the root directory.');
                     }
 
-                    // Combine "Already Rich" data
                     const history = {};
                     Object.keys(rawHistory).forEach(key => {
                         history[key] = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
-                        console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}`);
+                        if (history[key].length > 0) {
+                            console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}`);
+                        }
                     });
 
                     console.log(`Processed ${fileCount} CSV files. Dates processed: ${processedDates.sort().join(', ')}`);
@@ -225,7 +226,8 @@
                         results.data.forEach(row => {
                             const title = row.Song || '';
                             const album = row.Album || '';
-                            if (title) {
+                            const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
+                            if (title && daily > 0) {
                                 const key = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
                                 if (!songMap[key]) {
                                     songMap[key] = {
@@ -236,7 +238,7 @@
                                     };
                                 }
                                 songMap[key].streams += parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0;
-                                songMap[key].daily += parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
+                                songMap[key].daily += daily;
                             }
                         });
 
@@ -311,24 +313,11 @@
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
                 const [chartError, setChartError] = React.useState(null);
 
-                // Split songTitle to handle Swërved It
                 const [title, album] = songTitle.split('|');
                 const historyKey = title.toLowerCase() === 'already rich' ? 'Already Rich' : songTitle;
 
-                React.useEffect(() => {
-                    if (!historyData[historyKey] || !historyData[historyKey].length) {
-                        setChartError('No data available for this song.');
-                        return;
-                    }
-                    setTempStartDate(historyData[historyKey][0].date);
-                    setTempEndDate(historyData[historyKey][historyData[historyKey].length - 1].date);
-                    setCustomStartDate('');
-                    setCustomEndDate('');
-                    setChartError(null);
-                }, [historyKey]);
-
                 const validateDates = (start, end) => {
-                    if (!start || !end) return false;
+                    if (!start || !end || !historyData[historyKey]) return false;
                     try {
                         const startDate = new Date(start);
                         const endDate = new Date(end);
@@ -600,8 +589,8 @@
                                                 setShowCustomPicker(false);
                                                 setCustomStartDate('');
                                                 setCustomEndDate('');
-                                                setTempStartDate(historyData[historyKey] ? historyData[historyKey][0].date : '');
-                                                setTempEndDate(historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : '');
+                                                setTempStartDate('');
+                                                setTempEndDate('');
                                             }}
                                         >
                                             Last 7 days
@@ -613,8 +602,8 @@
                                                 setShowCustomPicker(false);
                                                 setCustomStartDate('');
                                                 setCustomEndDate('');
-                                                setTempStartDate(historyData[historyKey] ? historyData[historyKey][0].date : '');
-                                                setTempEndDate(historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : '');
+                                                setTempStartDate('');
+                                                setTempEndDate('');
                                             }}
                                         >
                                             Last 28 days
@@ -626,8 +615,8 @@
                                                 setShowCustomPicker(false);
                                                 setCustomStartDate('');
                                                 setCustomEndDate('');
-                                                setTempStartDate(historyData[historyKey] ? historyData[historyKey][0].date : '');
-                                                setTempEndDate(historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : '');
+                                                setTempStartDate('');
+                                                setTempEndDate('');
                                             }}
                                         >
                                             Last 90 days
@@ -639,8 +628,8 @@
                                                 setShowCustomPicker(false);
                                                 setCustomStartDate('');
                                                 setCustomEndDate('');
-                                                setTempStartDate(historyData[historyKey] ? historyData[historyKey][0].date : '');
-                                                setTempEndDate(historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : '');
+                                                setTempStartDate('');
+                                                setTempEndDate('');
                                             }}
                                         >
                                             All
@@ -650,6 +639,8 @@
                                             onClick={() => {
                                                 setDateRange('custom');
                                                 setShowCustomPicker(true);
+                                                setTempStartDate('');
+                                                setTempEndDate('');
                                             }}
                                         >
                                             Custom
@@ -764,7 +755,7 @@
                         <div className="mb-4 sm:mb-8">
                             <h1 className="text-xl sm:text-2xl font-bold mb-2 text-white">Yeat Spotify Stats</h1>
                             <p className="text-xs sm:text-sm text-white/60">
-                                Last updated: {formatDate(latestDate)}
+                                Showing data from: {formatDate(latestDate)}
                             </p>
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
