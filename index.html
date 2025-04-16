@@ -179,7 +179,7 @@
 
                 const soloTracks = leadTracks.filter(song => !song.title.toLowerCase().includes("feat."));
                 const soloStreams = soloTracks.reduce((sum, song) => sum + song.streams, 0);
-                const soloDaily = soloTracks.reduce((sum, song) => sum + sant daily, 0);
+                const soloDaily = soloTracks.reduce((sum, song) => sum + song.daily, 0); // Fixed typo: "sant daily" to "song.daily"
                 const soloCount = soloTracks.length;
 
                 setStatsData({
