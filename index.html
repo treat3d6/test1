@@ -61,6 +61,13 @@
             cursor: pointer;
             padding: 0.5rem;
         }
+        .song-selector {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            padding: 0.5rem;
+        }
     </style>
 </head>
 <body class="bg-black">
@@ -78,8 +85,9 @@
             const [historyData, setHistoryData] = React.useState({});
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
-            const [selectedSong, setSelectedSong] = React.useState(null);
+            const [selectedSongs, setSelectedSongs] = React.useState([]);
             const [latestDate, setLatestDate] = React.useState(null);
+            const [dataGaps, setDataGaps] = React.useState([]);
             const [statsData, setStatsData] = React.useState({
                 headers: ['Total', 'Lead', 'Solo', 'Features'],
                 rows: [
@@ -106,10 +114,36 @@
                 loadAllData();
             }, []);
 
+            const fillMissingDays = (history, startDate, endDate) => {
+                const filledHistory = [];
+                let currentDate = new Date(startDate);
+                const end = new Date(endDate);
+                const existingDates = new Set(history.map(entry => entry.date));
+
+                while (currentDate <= end) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    const existingEntry = history.find(entry => entry.date === dateStr);
+                    if (existingEntry) {
+                        filledHistory.push(existingEntry);
+                    } else {
+                        filledHistory.push({
+                            date: dateStr,
+                            streams: filledHistory.length > 0 ? filledHistory[filledHistory.length - 1].streams : 0,
+                            daily: 0,
+                            album: history[0]?.album || ''
+                        });
+                    }
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+
+                return filledHistory;
+            };
+
             const loadAllData = async () => {
                 try {
                     setLoading(true);
                     setError(null);
+                    setDataGaps([]);
 
                     const rawHistory = {};
                     let earliestDate = null;
@@ -117,6 +151,7 @@
                     let latestResponse = null;
                     let fileCount = 0;
                     const processedDates = [];
+                    const missingDates = [];
 
                     const startDate = new Date('2025-01-01');
                     const endDate = new Date();
@@ -177,9 +212,11 @@
                                 }
                             } else {
                                 console.warn(`CSV file for ${dateStr} not found (status: ${response.status})`);
+                                missingDates.push(dateStr);
                             }
                         } catch (err) {
                             console.warn(`Failed to load ${dateStr}.csv: ${err.message}`);
+                            missingDates.push(dateStr);
                         }
                         dateIterator.setDate(dateIterator.getDate() + 1);
                     }
@@ -190,14 +227,18 @@
 
                     const history = {};
                     Object.keys(rawHistory).forEach(key => {
-                        history[key] = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
+                        const sortedHistory = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
+                        history[key] = fillMissingDays(sortedHistory, earliestDate || startDate, latestDate || endDate);
                         if (history[key].length > 0) {
-                            console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}`);
+                            console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}, Entries: ${history[key].length}`);
                         }
                     });
 
                     console.log(`Processed ${fileCount} CSV files. Dates processed: ${processedDates.sort().join(', ')}`);
+                    console.log(`Missing dates: ${missingDates.join(', ') || 'None'}`);
                     console.log(`Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
+
+                    setDataGaps(missingDates);
 
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
@@ -227,7 +268,7 @@
                             const title = row.Song || '';
                             const album = row.Album || '';
                             const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
-                            if (title && daily > 0) {
+                            if (title) {
                                 const key = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
                                 if (!songMap[key]) {
                                     songMap[key] = {
@@ -242,7 +283,7 @@
                             }
                         });
 
-                        const processedSongs = Object.values(songMap).filter(song => song.streams && song.daily);
+                        const processedSongs = Object.values(songMap).filter(song => song.streams || song.daily);
                         setSongs(processedSongs);
                         calculateStats(processedSongs);
                     },
@@ -302,7 +343,7 @@
                 setAlbums(albumStats);
             };
 
-            const SongChart = ({ songTitle, onClose }) => {
+            const SongChart = ({ songKeys, songsData, onClose }) => {
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
                 const [dateRange, setDateRange] = React.useState('all');
@@ -312,17 +353,21 @@
                 const [tempEndDate, setTempEndDate] = React.useState('');
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
                 const [chartError, setChartError] = React.useState(null);
+                const [compareSongs, setCompareSongs] = React.useState(songKeys);
+                const [searchCompare, setSearchCompare] = React.useState('');
 
-                const [title, album] = songTitle.split('|');
-                const historyKey = title.toLowerCase() === 'already rich' ? 'Already Rich' : songTitle;
+                const colors = [
+                    '#60A5FA', '#F87171', '#34D399', '#FBBF24', '#A78BFA',
+                    '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'
+                ];
 
-                const validateDates = (start, end) => {
-                    if (!start || !end || !historyData[historyKey]) return false;
+                const validateDates = (start, end, history) => {
+                    if (!start || !end || !history) return false;
                     try {
                         const startDate = new Date(start);
                         const endDate = new Date(end);
-                        const minDate = new Date(historyData[historyKey][0].date);
-                        const maxDate = new Date(historyData[historyKey][historyData[historyKey].length - 1].date);
+                        const minDate = new Date(history[0].date);
+                        const maxDate = new Date(history[history.length - 1].date);
                         return !isNaN(startDate) && !isNaN(endDate) && 
                                startDate <= endDate && 
                                startDate >= minDate && 
@@ -334,7 +379,10 @@
                 };
 
                 const handleApplyCustomDates = () => {
-                    if (validateDates(tempStartDate, tempEndDate)) {
+                    const isValid = compareSongs.every(key => 
+                        validateDates(tempStartDate, tempEndDate, historyData[key])
+                    );
+                    if (isValid) {
                         setCustomStartDate(tempStartDate);
                         setCustomEndDate(tempEndDate);
                         setChartError(null);
@@ -343,23 +391,50 @@
                     }
                 };
 
+                const handleSongToggle = (key) => {
+                    if (compareSongs.includes(key)) {
+                        setCompareSongs(compareSongs.filter(k => k !== key));
+                    } else if (compareSongs.length < 5) {
+                        setCompareSongs([...compareSongs, key]);
+                    }
+                };
+
                 React.useEffect(() => {
-                    if (!historyKey || !historyData[historyKey] || !historyData[historyKey].length) {
-                        setChartError('No data available for this song.');
+                    if (!historyData || Object.keys(historyData).length === 0) {
+                        setChartError('No historical data available.');
+                        return;
+                    }
+
+                    if (!compareSongs.length || compareSongs.some(key => !historyData[key] || !historyData[key].length)) {
+                        setChartError('No data available for selected songs.');
                         return;
                     }
 
                     try {
-                        let history = historyData[historyKey];
-                        let startDate, endDate;
+                        let allLabels = [];
+                        let datasets = [];
+                        let minDate = null;
+                        let maxDate = null;
 
-                        if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
+                        compareSongs.forEach((key, index) => {
+                            let history = historyData[key];
+                            if (!history || !history.length) return;
+
+                            const firstDate = new Date(history[0].date);
+                            const lastDate = new Date(history[history.length - 1].date);
+                            minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
+                            maxDate = maxDate ? new Date(Math.max(maxDate, lastDate)) : lastDate;
+                        });
+
+                        let startDate, endDate;
+                        if (dateRange === 'custom' && customStartDate && customEndDate && 
+                            compareSongs.every(key => validateDates(customStartDate, customEndDate, historyData[key]))) {
                             startDate = new Date(customStartDate);
                             endDate = new Date(customEndDate);
                         } else {
-                            endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
+                            endDate = maxDate;
                             if (dateRange === 'all') {
-                                startDate = new Date(history[0].date + 'T00:00:00Z');
+                                startDate = minDate;
                             } else {
                                 const days = parseInt(dateRange);
                                 startDate = new Date(endDate);
@@ -367,32 +442,56 @@
                             }
                         }
 
-                        console.log(`Rendering chart for ${historyKey} between ${startDate.toISOString().split('T')[0]} and ${endDate.toISOString().split('T')[0]}`);
+                        // Generate all possible dates in the range
+                        const dateLabels = [];
+                        let currentDate = new Date(startDate);
+                        while (currentDate <= endDate) {
+                            dateLabels.push(currentDate.toISOString().split('T')[0]);
+                            currentDate.setDate(currentDate.getDate() + 1);
+                        }
 
-                        history = history.filter(entry => {
-                            const entryDate = new Date(entry.date + 'T00:00:00Z');
-                            return entryDate >= startDate && entryDate <= endDate;
+                        allLabels = dateLabels.map(date => {
+                            const d = new Date(date);
+                            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                         });
 
-                        if (history.length === 0) {
+                        compareSongs.forEach((key, index) => {
+                            let history = historyData[key];
+                            if (!history || !history.length) return;
+
+                            const [title, album] = key.split('|');
+                            const displayTitle = title.toLowerCase() === 'already rich' ? 'Already Rich' : title;
+
+                            // Map history to all dates, filling gaps with zero
+                            const dailyData = dateLabels.map(date => {
+                                const entry = history.find(e => e.date === date);
+                                return entry ? entry.daily : 0;
+                            });
+                            const totalStreamsData = dateLabels.map((date, idx) => {
+                                const entry = history.find(e => e.date === date);
+                                if (entry) return entry.streams;
+                                // Use last known streams if available, else 0
+                                return idx > 0 ? (dailyData[idx - 1] ? totalStreamsData[idx - 1] : 0) : 0;
+                            });
+
+                            datasets.push({
+                                label: `${displayTitle} (${album})`,
+                                data: dailyData,
+                                borderColor: colors[index % colors.length],
+                                backgroundColor: colors[index % colors.length] + '33',
+                                fill: true,
+                                tension: 0.3,
+                                pointRadius: 0,
+                                borderWidth: 2
+                            });
+                        });
+
+                        if (!allLabels.length || !datasets.length) {
                             setChartError('No data available for the selected date range.');
                             return;
                         }
 
-                        const labels = history.map(entry => {
-                            const date = new Date(entry.date + 'T00:00:00Z');
-                            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-                        });
-                        const dailyData = history.map(entry => entry.daily);
-                        const totalStreamsData = history.map(entry => entry.streams);
-
-                        if (!labels.length || !dailyData.length) {
-                            setChartError('Insufficient data to render chart.');
-                            return;
-                        }
-
                         const ctx = canvasRef.current.getContext('2d');
-
                         if (chartRef.current) {
                             chartRef.current.destroy();
                         }
@@ -400,19 +499,8 @@
                         chartRef.current = new Chart(ctx, {
                             type: 'line',
                             data: {
-                                labels: labels,
-                                datasets: [
-                                    {
-                                        label: 'Daily Streams',
-                                        data: dailyData,
-                                        borderColor: '#60A5FA',
-                                        backgroundColor: 'rgba(96, 165, 250, 0.2)',
-                                        fill: true,
-                                        tension: 0.3,
-                                        pointRadius: 0,
-                                        borderWidth: 2
-                                    }
-                                ]
+                                labels: allLabels,
+                                datasets: datasets
                             },
                             options: {
                                 responsive: true,
@@ -421,40 +509,33 @@
                                     x: {
                                         ticks: {
                                             color: '#ffffff',
-                                            font: {
-                                                size: 12
-                                            },
+                                            font: { size: 12 },
                                             maxRotation: 45,
                                             minRotation: 45
                                         },
-                                        grid: {
-                                            color: 'rgba(255, 255, 255, 0.1)'
-                                        }
+                                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
                                     },
                                     y: {
-                                        title: {
-                                            display: false
-                                        },
+                                        title: { display: false },
                                         ticks: {
                                             color: '#ffffff',
-                                            font: {
-                                                size: 12
-                                            },
+                                            font: { size: 12 },
                                             callback: (value) => value.toLocaleString()
                                         },
-                                        grid: {
-                                            color: 'rgba(255, 255, 255, 0.1)'
-                                        },
+                                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
                                         beginAtZero: true
                                     }
                                 },
                                 plugins: {
                                     legend: {
-                                        display: false
+                                        display: true,
+                                        position: 'top',
+                                        labels: {
+                                            color: '#ffffff',
+                                            font: { size: 12 }
+                                        }
                                     },
-                                    title: {
-                                        display: false
-                                    },
+                                    title: { display: false },
                                     tooltip: {
                                         enabled: true,
                                         backgroundColor: '#1f2937',
@@ -463,14 +544,20 @@
                                         borderColor: '#4b5563',
                                         borderWidth: 1,
                                         cornerRadius: 4,
-                                        displayColors: false,
-                                        caretSize: 0,
+                                        displayColors: true,
                                         callbacks: {
-                                            label: (context) => [
-                                                `Daily: ${context.parsed.y.toLocaleString()}`,
-                                                `Total: ${totalStreamsData[context.dataIndex].toLocaleString()}`
-                                            ],
-                                            title: (tooltipItems) => tooltipItems[0].label
+                                            label: (context) => {
+                                                const datasetIndex = context.datasetIndex;
+                                                const dataIndex = context.dataIndex;
+                                                const key = compareSongs[datasetIndex];
+                                                const history = historyData[key];
+                                                const date = dateLabels[dataIndex];
+                                                const entry = history.find(e => e.date === date);
+                                                return [
+                                                    `Daily: ${context.parsed.y.toLocaleString()}`,
+                                                    `Total: ${(entry?.streams || 0).toLocaleString()}`
+                                                ];
+                                            }
                                         }
                                     }
                                 },
@@ -490,23 +577,36 @@
                             }
                         };
                     } catch (e) {
-                        console.error('Chart rendering error:', e);
-                        setChartError('Failed to render chart. Please try a different date range.');
+                        console.error('Chart rendering error:', e.message, e.stack);
+                        setChartError('Failed to render chart. Please try a different date range or song selection.');
                     }
-                }, [historyKey, dateRange, customStartDate, customEndDate]);
+                }, [compareSongs, dateRange, customStartDate, customEndDate]);
 
                 const getDateRangeText = () => {
-                    if (!historyData[historyKey] || !historyData[historyKey].length) return 'No data available';
-                    let history = historyData[historyKey];
-                    let startDate, endDate;
+                    if (!compareSongs.length || compareSongs.some(key => !historyData[key] || !historyData[key].length)) 
+                        return 'No data available';
+                    
+                    let minDate = null;
+                    let maxDate = null;
+                    compareSongs.forEach(key => {
+                        const history = historyData[key];
+                        if (history && history.length) {
+                            const firstDate = new Date(history[0].date);
+                            const lastDate = new Date(history[history.length - 1].date);
+                            minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
+                            maxDate = maxDate ? new Date(Math.max(maxDate, lastDate)) : lastDate;
+                        }
+                    });
 
-                    if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
-                        startDate = new Date(customStartDate + 'T00:00:00Z');
-                        endDate = new Date(customEndDate + 'T00:00:00Z');
+                    let startDate, endDate;
+                    if (dateRange === 'custom' && customStartDate && customEndDate && 
+                        compareSongs.every(key => validateDates(customStartDate, customEndDate, historyData[key]))) {
+                        startDate = new Date(customStartDate);
+                        endDate = new Date(customEndDate);
                     } else {
-                        endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
+                        endDate = maxDate;
                         if (dateRange === 'all') {
-                            startDate = new Date(history[0].date + 'T00:00:00Z');
+                            startDate = minDate;
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
@@ -517,47 +617,10 @@
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
 
-                const getCurrentTotalStreams = () => {
-                    if (!historyData[historyKey] || !historyData[historyKey].length) return 0;
-                    const history = historyData[historyKey];
-                    return history[history.length - 1].streams;
-                };
-
-                const getPercentageChange = () => {
-                    if (!historyData[historyKey] || !historyData[historyKey].length) return { percentage: 0, isIncrease: true };
-                    let history = historyData[historyKey];
-                    let startDate, endDate;
-
-                    if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
-                        startDate = new Date(customStartDate + 'T00:00:00Z');
-                        endDate = new Date(customEndDate + 'T00:00:00Z');
-                    } else {
-                        endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
-                        if (dateRange === 'all') {
-                            startDate = new Date(history[0].date + 'T00:00:00Z');
-                        } else {
-                            const days = parseInt(dateRange);
-                            startDate = new Date(endDate);
-                            startDate.setDate(endDate.getDate() - days + 1);
-                        }
-                    }
-
-                    history = history.filter(entry => {
-                        const entryDate = new Date(entry.date + 'T00:00:00Z');
-                        return entryDate >= startDate && entryDate <= endDate;
-                    });
-
-                    if (history.length < 2) return { percentage: 0, isIncrease: true };
-
-                    const firstDaily = history[0].daily;
-                    const lastDaily = history[history.length - 1].daily;
-                    const percentage = ((lastDaily - firstDaily) / firstDaily * 100).toFixed(2);
-                    const isIncrease = lastDaily >= firstDaily;
-
-                    return { percentage: Math.abs(percentage), isIncrease };
-                };
-
-                const { percentage, isIncrease } = getPercentageChange();
+                const filteredSongs = songsData.filter(song => 
+                    song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
+                    song.album.toLowerCase().includes(searchCompare.toLowerCase())
+                );
 
                 return (
                     <div className="modal-overlay" onClick={onClose}>
@@ -567,19 +630,49 @@
                             </button>
                             <div className="mb-4">
                                 <h2 className="text-lg font-bold text-white sm:text-xl">
-                                    {title} {album ? `(${album})` : ''} • {getCurrentTotalStreams().toLocaleString()} Total Streams
+                                    Compare Songs
                                 </h2>
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
+                                {dataGaps.length > 0 && (
+                                    <p className="text-sm text-yellow-500 mt-2">
+                                        Note: Data is missing for {dataGaps.length} day(s). Gaps are filled with zero streams.
+                                    </p>
+                                )}
+                                <div className="mt-2">
+                                    <input
+                                        type="text"
+                                        placeholder="Search songs to compare..."
+                                        className="w-full px-4 py-2 text-sm rounded-lg border border-white/20 bg-black text-white placeholder-white/40 focus:outline-none focus:border-white/40 mb-2"
+                                        value={searchCompare}
+                                        onChange={(e) => setSearchCompare(e.target.value)}
+                                    />
+                                    <div className="song-selector">
+                                        {filteredSongs.map(song => {
+                                            const key = song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`;
+                                            return (
+                                                <div key={key} className="flex items-center py-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={compareSongs.includes(key)}
+                                                        onChange={() => handleSongToggle(key)}
+                                                        disabled={!compareSongs.includes(key) && compareSongs.length >= 5}
+                                                        className="mr-2"
+                                                    />
+                                                    <span className="text-sm text-white">
+                                                        {song.title} ({song.album})
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {compareSongs.length >= 5 && (
+                                        <p className="text-sm text-yellow-500 mt-2">
+                                            Maximum 5 songs can be compared at once
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4 gap-2">
                                     <div>
                                         <p className="text-sm text-white/60">{getDateRangeText()}</p>
-                                        {dateRange !== 'all' && (
-                                            <p className="text-sm mt-1">
-                                                <span className="text-white/60">Change: </span>
-                                                <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
-                                                    {isIncrease ? '+' : '-'}{percentage}%
-                                                </span>
-                                            </p>
-                                        )}
                                     </div>
                                     <div className="flex gap-2 flex-wrap">
                                         <button
@@ -656,8 +749,16 @@
                                                 className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
                                                 value={tempStartDate}
                                                 onChange={(e) => setTempStartDate(e.target.value)}
-                                                min={historyData[historyKey] ? historyData[historyKey][0].date : ''}
-                                                max={tempEndDate || (historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : '')}
+                                                min={compareSongs.reduce((min, key) => {
+                                                    const history = historyData[key];
+                                                    return history && history.length ? 
+                                                        (min ? Math.min(new Date(min), new Date(history[0].date)) : new Date(history[0].date)) : min;
+                                                }, null)?.toISOString().split('T')[0]}
+                                                max={tempEndDate || compareSongs.reduce((max, key) => {
+                                                    const history = historyData[key];
+                                                    return history && history.length ? 
+                                                        (max ? Math.max(new Date(max), new Date(history[history.length - 1].date)) : new Date(history[history.length - 1].date)) : max;
+                                                }, null)?.toISOString().split('T')[0]}
                                             />
                                         </div>
                                         <div className="flex flex-col w-full sm:w-auto">
@@ -667,8 +768,16 @@
                                                 className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
                                                 value={tempEndDate}
                                                 onChange={(e) => setTempEndDate(e.target.value)}
-                                                min={tempStartDate || (historyData[historyKey] ? historyData[historyKey][0].date : '')}
-                                                max={historyData[historyKey] ? historyData[historyKey][historyData[historyKey].length - 1].date : ''}
+                                                min={tempStartDate || compareSongs.reduce((min, key) => {
+                                                    const history = historyData[key];
+                                                    return history && history.length ? 
+                                                        (min ? Math.min(new Date(min), new Date(history[0].date)) : new Date(history[0].date)) : min;
+                                                }, null)?.toISOString().split('T')[0]}
+                                                max={compareSongs.reduce((max, key) => {
+                                                    const history = historyData[key];
+                                                    return history && history.length ? 
+                                                        (max ? Math.max(new Date(max), new Date(history[history.length - 1].date)) : new Date(history[history.length - 1].date)) : max;
+                                                }, null)?.toISOString().split('T')[0]}
                                             />
                                         </div>
                                         <button
@@ -755,11 +864,16 @@
                         <div className="mb-4 sm:mb-8">
                             <h1 className="text-xl sm:text-2xl font-bold mb-2 text-white">Yeat Spotify Stats</h1>
                             <p className="text-xs sm:text-sm text-white/60">
-                                Last updated: {formatDate(latestDate)}
+                                {formatDate(latestDate)}
                             </p>
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
                                     Error: {error}
+                                </div>
+                            )}
+                            {dataGaps.length > 0 && (
+                                <div className="mt-2 text-sm text-yellow-500">
+                                    Warning: Data is missing for {dataGaps.length} day(s): {dataGaps.join(', ')}
                                 </div>
                             )}
                         </div>
@@ -805,7 +919,7 @@
                                             }`}
                                             onClick={() => {
                                                 setActiveTab('songs');
-                                                setSelectedSong(null);
+                                                setSelectedSongs([]);
                                             }}
                                         >
                                             Songs
@@ -818,7 +932,7 @@
                                             }`}
                                             onClick={() => {
                                                 setActiveTab('albums');
-                                                setSelectedSong(null);
+                                                setSelectedSongs([]);
                                             }}
                                         >
                                             Albums
@@ -878,7 +992,9 @@
                                                     onClick={() => {
                                                         if (activeTab === 'songs') {
                                                             const key = item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`;
-                                                            setSelectedSong(key);
+                                                            setSelectedSongs(prev => 
+                                                                prev.includes(key) ? prev : [...prev, key]
+                                                            );
                                                         }
                                                     }}
                                                 >
@@ -898,10 +1014,11 @@
                                     </table>
                                 </div>
 
-                                {activeTab === 'songs' && selectedSong && historyData[selectedSong] && (
+                                {activeTab === 'songs' && selectedSongs.length > 0 && (
                                     <SongChart 
-                                        songTitle={selectedSong} 
-                                        onClose={() => setSelectedSong(null)}
+                                        songKeys={selectedSongs} 
+                                        songsData={songs}
+                                        onClose={() => setSelectedSongs([])}
                                     />
                                 )}
                             </>
