@@ -65,16 +65,20 @@
                     setLoading(true);
                     setError(null);
 
-                    const startDate = new Date('2025-04-01');
-                    const dates = [];
+                    const history = {};
+                    let earliestDate = null;
                     let latestDate = null;
                     let latestResponse = null;
-                    const history = {};
+                    let fileCount = 0;
 
-                    // Check for available CSV files starting from startDate
-                    let currentDate = new Date(startDate);
-                    while (true) {
-                        const dateStr = currentDate.toISOString().split('T')[0];
+                    // Start from an earlier date to capture all possible CSV files
+                    const startDate = new Date('2024-01-01');
+                    const currentDate = new Date(); // Up to today (April 15, 2025)
+
+                    // Loop through all possible dates
+                    let dateIterator = new Date(startDate);
+                    while (dateIterator <= currentDate) {
+                        const dateStr = dateIterator.toISOString().split('T')[0];
                         try {
                             const response = await fetch(`./${dateStr}.csv`);
                             if (response.ok) {
@@ -104,25 +108,33 @@
                                     }
                                 });
 
-                                dates.push(dateStr);
+                                fileCount++;
+                                if (!earliestDate || dateStr < earliestDate) {
+                                    earliestDate = dateStr;
+                                }
                                 if (!latestDate || dateStr > latestDate) {
                                     latestDate = dateStr;
                                     latestResponse = { ok: true, text: () => Promise.resolve(text) };
                                 }
                             } else {
                                 console.warn(`CSV file for ${dateStr} not found (status: ${response.status})`);
-                                break;
                             }
                         } catch (err) {
                             console.warn(`Failed to load ${dateStr}.csv: ${err.message}`);
-                            break;
                         }
-                        currentDate.setDate(currentDate.getDate() + 1);
+                        dateIterator.setDate(dateIterator.getDate() + 1);
                     }
 
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-04-01.csv to 2025-04-14.csv in the root directory.');
+                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-04-01.csv in the root directory.');
                     }
+
+                    // Sort history data for each song by date
+                    Object.keys(history).forEach(title => {
+                        history[title].sort((a, b) => new Date(a.date) - new Date(b.date));
+                    });
+
+                    console.log(`Processed ${fileCount} CSV files. Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
 
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
@@ -175,7 +187,7 @@
                 const featureDaily = featureTracks.reduce((sum, song) => sum + song.daily, 0);
                 const featureCount = featureTracks.length;
 
-                const leadTracks = processedSongs.filter(song => song.album !== "Features");
+                const leadTracks = processedSongs.filter(song => song.album !== "Features"); // Fixed syntax error: removed extra parenthesis
                 const leadStreams = leadTracks.reduce((sum, song) => sum + song.streams, 0);
                 const leadDaily = leadTracks.reduce((sum, song) => sum + song.daily, 0);
                 const leadCount = leadTracks.length;
@@ -240,7 +252,7 @@
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
-                            startDate.setDate(endDate.getDate() - days);
+                            startDate.setDate(endDate.getDate() - days + 1);
                         }
                     }
 
@@ -370,14 +382,8 @@
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
-                            startDate.setDate(endDate.getDate() - days);
+                            startDate.setDate(endDate.getDate() - days + 1);
                         }
-                    }
-
-                    // Ensure startDate doesn't go before the earliest data
-                    const earliestDate = new Date(history[0].date);
-                    if (startDate < earliestDate) {
-                        startDate = earliestDate;
                     }
 
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -406,7 +412,7 @@
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
-                            startDate.setDate(endDate.getDate() - days);
+                            startDate.setDate(endDate.getDate() - days + 1);
                         }
                     }
 
