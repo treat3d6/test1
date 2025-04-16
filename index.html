@@ -61,12 +61,23 @@
             cursor: pointer;
             padding: 0.5rem;
         }
-        .song-selector {
-            max-height: 200px;
-            overflow-y: auto;
+        .autocomplete-suggestions {
+            position: absolute;
+            background: black;
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 0.5rem;
-            padding: 0.5rem;
+            max-height: 200px;
+            overflow-y: auto;
+            width: calc(100% - 2rem);
+            z-index: 1001;
+        }
+        .suggestion-item {
+            padding: 0.5rem 1rem;
+            color: white;
+            cursor: pointer;
+        }
+        .suggestion-item:hover {
+            background: rgba(255, 255, 255, 0.1);
         }
     </style>
 </head>
@@ -320,23 +331,26 @@
                 const [chartError, setChartError] = React.useState(null);
                 const [compareSongs, setCompareSongs] = React.useState(songKeys);
                 const [searchCompare, setSearchCompare] = React.useState('');
+                const [showSuggestions, setShowSuggestions] = React.useState(false);
 
                 const colors = [
                     '#60A5FA', '#F87171', '#34D399', '#FBBF24', '#A78BFA',
                     '#EC4899', '#10B981', '#F59E0B', '#8B5CF6', '#EF4444'
                 ];
 
-                const validateDates = (start, end, history) => {
-                    if (!start || !end || !history) return false;
+                const validateDates = (start, end, histories) => {
+                    if (!start || !end || !histories || !histories.length) return false;
                     try {
                         const startDate = new Date(start);
                         const endDate = new Date(end);
-                        const minDate = new Date(history[0].date);
-                        const maxDate = new Date(history[history.length - 1].date);
-                        return !isNaN(startDate) && !isNaN(endDate) && 
-                               startDate <= endDate && 
-                               startDate >= minDate && 
-                               endDate <= maxDate;
+                        if (isNaN(startDate) || isNaN(endDate) || startDate > endDate) return false;
+
+                        return histories.every(history => {
+                            if (!history || !history.length) return false;
+                            const minDate = new Date(history[0].date);
+                            const maxDate = new Date(history[history.length - 1].date);
+                            return startDate >= minDate && endDate <= maxDate;
+                        });
                     } catch (e) {
                         console.error('Date validation error:', e);
                         return false;
@@ -344,25 +358,57 @@
                 };
 
                 const handleApplyCustomDates = () => {
-                    const isValid = compareSongs.every(key => 
-                        validateDates(tempStartDate, tempEndDate, historyData[key])
-                    );
-                    if (isValid) {
+                    const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
+                    if (validateDates(tempStartDate, tempEndDate, histories)) {
                         setCustomStartDate(tempStartDate);
                         setCustomEndDate(tempEndDate);
                         setChartError(null);
                     } else {
-                        setChartError('Invalid date range. Please select valid dates within the available data.');
+                        setChartError('Invalid date range. Please select dates within the available data for all selected songs.');
                     }
                 };
 
-                const handleSongToggle = (key) => {
-                    if (compareSongs.includes(key)) {
-                        setCompareSongs(compareSongs.filter(k => k !== key));
-                    } else if (compareSongs.length < 5) {
-                        setCompareSongs([...compareSongs, key]);
+                const handleSongSelect = (key) => {
+                    if (!compareSongs.includes(key) && compareSongs.length < 5) {
+                        const newCompareSongs = [...compareSongs, key];
+                        setCompareSongs(newCompareSongs);
+                        setSearchCompare('');
+                        setShowSuggestions(false);
+
+                        // Reset custom dates if they become invalid
+                        const histories = newCompareSongs.map(k => historyData[k]).filter(Boolean);
+                        if (customStartDate && customEndDate && !validateDates(customStartDate, customEndDate, histories)) {
+                            setCustomStartDate('');
+                            setCustomEndDate('');
+                            setTempStartDate('');
+                            setTempEndDate('');
+                            setDateRange('all');
+                            setShowCustomPicker(false);
+                        }
                     }
                 };
+
+                const handleSongRemove = (key) => {
+                    const newCompareSongs = compareSongs.filter(k => k !== key);
+                    setCompareSongs(newCompareSongs);
+
+                    // Reset custom dates if they become invalid
+                    const histories = newCompareSongs.map(k => historyData[k]).filter(Boolean);
+                    if (customStartDate && customEndDate && !validateDates(customStartDate, customEndDate, histories)) {
+                        setCustomStartDate('');
+                        setCustomEndDate('');
+                        setTempStartDate('');
+                        setTempEndDate('');
+                        setDateRange('all');
+                        setShowCustomPicker(false);
+                    }
+                };
+
+                const filteredSongs = songsData.filter(song => 
+                    (song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
+                    song.album.toLowerCase().includes(searchCompare.toLowerCase())) &&
+                    !compareSongs.includes(song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`)
+                );
 
                 React.useEffect(() => {
                     if (!historyData || Object.keys(historyData).length === 0) {
@@ -394,8 +440,9 @@
                         });
 
                         let startDate, endDate;
+                        const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
                         if (dateRange === 'custom' && customStartDate && customEndDate && 
-                            compareSongs.every(key => validateDates(customStartDate, customEndDate, historyData[key]))) {
+                            validateDates(customStartDate, customEndDate, histories)) {
                             startDate = new Date(customStartDate);
                             endDate = new Date(customEndDate);
                         } else {
@@ -565,8 +612,9 @@
                     });
 
                     let startDate, endDate;
+                    const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
                     if (dateRange === 'custom' && customStartDate && customEndDate && 
-                        compareSongs.every(key => validateDates(customStartDate, customEndDate, historyData[key]))) {
+                        validateDates(customStartDate, customEndDate, histories)) {
                         startDate = new Date(customStartDate);
                         endDate = new Date(customEndDate);
                     } else {
@@ -583,11 +631,6 @@
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
 
-                const filteredSongs = songsData.filter(song => 
-                    song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
-                    song.album.toLowerCase().includes(searchCompare.toLowerCase())
-                );
-
                 return (
                     <div className="modal-overlay" onClick={onClose}>
                         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -598,29 +641,50 @@
                                 <h2 className="text-lg font-bold text-white sm:text-xl">
                                     Compare Songs
                                 </h2>
-                                <div className="mt-2">
+                                <div className="mt-2 relative">
                                     <input
                                         type="text"
                                         placeholder="Search songs to compare..."
                                         className="w-full px-4 py-2 text-sm rounded-lg border border-white/20 bg-black text-white placeholder-white/40 focus:outline-none focus:border-white/40 mb-2"
                                         value={searchCompare}
-                                        onChange={(e) => setSearchCompare(e.target.value)}
+                                        onChange={(e) => {
+                                            setSearchCompare(e.target.value);
+                                            setShowSuggestions(e.target.value.length > 0);
+                                        }}
+                                        onFocus={() => setShowSuggestions(searchCompare.length > 0)}
+                                        onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                     />
-                                    <div className="song-selector">
-                                        {filteredSongs.map(song => {
-                                            const key = song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`;
-                                            return (
-                                                <div key={key} className="flex items-center py-1">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={compareSongs.includes(key)}
-                                                        onChange={() => handleSongToggle(key)}
-                                                        disabled={!compareSongs.includes(key) && compareSongs.length >= 5}
-                                                        className="mr-2"
-                                                    />
-                                                    <span className="text-sm text-white">
+                                    {showSuggestions && filteredSongs.length > 0 && (
+                                        <div className="autocomplete-suggestions">
+                                            {filteredSongs.map(song => {
+                                                const key = song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`;
+                                                return (
+                                                    <div
+                                                        key={key}
+                                                        className="suggestion-item text-sm"
+                                                        onClick={() => handleSongSelect(key)}
+                                                    >
                                                         {song.title} ({song.album})
-                                                    </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                        {compareSongs.map(key => {
+                                            const [title, album] = key.split('|');
+                                            return (
+                                                <div
+                                                    key={key}
+                                                    className="flex items-center px-3 py-1 text-sm bg-white/20 text-white rounded-full"
+                                                >
+                                                    {title} ({album})
+                                                    <button
+                                                        className="ml-2 text-white/60 hover:text-white"
+                                                        onClick={() => handleSongRemove(key)}
+                                                    >
+                                                        ×
+                                                    </button>
                                                 </div>
                                             );
                                         })}
@@ -710,16 +774,6 @@
                                                 className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
                                                 value={tempStartDate}
                                                 onChange={(e) => setTempStartDate(e.target.value)}
-                                                min={compareSongs.reduce((min, key) => {
-                                                    const history = historyData[key];
-                                                    return history && history.length ? 
-                                                        (min ? Math.min(new Date(min), new Date(history[0].date)) : new Date(history[0].date)) : min;
-                                                }, null)?.toISOString().split('T')[0]}
-                                                max={tempEndDate || compareSongs.reduce((max, key) => {
-                                                    const history = historyData[key];
-                                                    return history && history.length ? 
-                                                        (max ? Math.max(new Date(max), new Date(history[history.length - 1].date)) : new Date(history[history.length - 1].date)) : max;
-                                                }, null)?.toISOString().split('T')[0]}
                                             />
                                         </div>
                                         <div className="flex flex-col w-full sm:w-auto">
@@ -729,16 +783,6 @@
                                                 className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
                                                 value={tempEndDate}
                                                 onChange={(e) => setTempEndDate(e.target.value)}
-                                                min={tempStartDate || compareSongs.reduce((min, key) => {
-                                                    const history = historyData[key];
-                                                    return history && history.length ? 
-                                                        (min ? Math.min(new Date(min), new Date(history[0].date)) : new Date(history[0].date)) : min;
-                                                }, null)?.toISOString().split('T')[0]}
-                                                max={compareSongs.reduce((max, key) => {
-                                                    const history = historyData[key];
-                                                    return history && history.length ? 
-                                                        (max ? Math.max(new Date(max), new Date(history[history.length - 1].date)) : new Date(history[history.length - 1].date)) : max;
-                                                }, null)?.toISOString().split('T')[0]}
                                             />
                                         </div>
                                         <button
