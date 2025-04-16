@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Prevent caching -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Yeat Stats</title>
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
@@ -36,7 +40,7 @@
             const [selectedSong, setSelectedSong] = React.useState(null);
             const [latestDate, setLatestDate] = React.useState(null);
             const [statsData, setStatsData] = React.useState({
-                headers: ['Total', 'Lead', 'Solo', 'Features'],
+                headers: ['Total', 'As lead', 'Solo', 'As feature (*)'],
                 rows: [
                     { label: 'Streams', values: [0, 0, 0, 0] },
                     { label: 'Daily', values: [0, 0, 0, 0] },
@@ -285,6 +289,8 @@
                         }
                     }
 
+                    console.log(`Filtering history for ${songTitle} between ${startDate.toISOString().split('T')[0]} and ${endDate.toISOString().split('T')[0]}`);
+
                     history = history.filter(entry => {
                         const entryDate = new Date(entry.date);
                         return entryDate >= startDate && entryDate <= endDate;
@@ -301,6 +307,8 @@
                     });
                     const dailyData = history.map(entry => entry.daily);
                     const totalStreamsData = history.map(entry => entry.streams);
+
+                    console.log(`Chart labels for ${songTitle}: ${labels.join(', ')}`);
 
                     const ctx = canvasRef.current.getContext('2d');
 
@@ -476,7 +484,7 @@
                                     <p className="text-sm text-white/60">{getDateRangeText()}</p>
                                     {dateRange !== 'all' && (
                                         <p className="text-sm mt-1">
-                                            <span className="text-white/60">Change: </span>
+                                            <span className="text-white/60">Percentage Change: </span>
                                             <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
                                                 {isIncrease ? '+' : '-'}{percentage}%
                                             </span>
@@ -631,7 +639,7 @@
                         <div className="mb-4 sm:mb-8">
                             <h1 className="text-xl sm:text-2xl font-bold mb-2 text-white">Yeat Spotify Stats</h1>
                             <p className="text-xs sm:text-sm text-white/60">
-                                Last update: {formatDate(latestDate)}
+                                Showing data from: {formatDate(latestDate)}
                             </p>
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
