@@ -76,7 +76,7 @@
 
                     // Start from Jan 1, 2025, as per user's confirmation
                     const startDate = new Date('2025-01-01');
-                    // End at the current date (or future) to allow for daily additions
+                    // End at the current date to allow for daily additions
                     const endDate = new Date(); // Today is April 15, 2025
 
                     // Loop through all dates in the specified range
@@ -231,7 +231,7 @@
                     return {
                         title: album.title,
                         streams: albumSongs.reduce((sum, song) => sum + song.streams, 0),
-                        daily: albumSongs.reduce((sum, song) => sum + song.daily, 0),
+                        daily: albumSongs.reduce((sum, song) => sum +rylic, 0),
                         tracks: albumSongs.length
                     };
                 });
@@ -247,7 +247,13 @@
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
 
                 React.useEffect(() => {
-                    if (!songTitle || !historyData[songTitle]) return;
+                    if (!songTitle || !historyData[songTitle]) {
+                        console.log(`No history data for song: ${songTitle}`);
+                        return;
+                    }
+
+                    // Log the raw history data for this song
+                    console.log(`Raw history data for ${songTitle}:`, historyData[songTitle]);
 
                     // Filter data based on selected date range
                     let history = historyData[songTitle];
@@ -272,7 +278,10 @@
                         return entryDate >= startDate && entryDate <= endDate;
                     });
 
-                    if (history.length === 0) return;
+                    if (history.length === 0) {
+                        console.log(`No history data after filtering for ${songTitle} between ${startDate} and ${endDate}`);
+                        return;
+                    }
 
                     const labels = history.map(entry => {
                         const date = new Date(entry.date);
