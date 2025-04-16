@@ -308,7 +308,7 @@
                     const labels = history.map(entry => {
                         const date = new Date(entry.date + 'T00:00:00Z');
                         console.log(`Raw date for ${entry.date}: ${date.toISOString()}`);
-                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                     });
                     const dailyData = history.map(entry => entry.daily);
                     const totalStreamsData = history.map(entry => entry.streams);
@@ -431,7 +431,7 @@
                         }
                     }
 
-                    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+                    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
 
                 // Get current total streams (latest date)
