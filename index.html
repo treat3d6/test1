@@ -294,13 +294,18 @@
                 const [tempEndDate, setTempEndDate] = React.useState('');
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
 
+                React.useEffect(() => {
+                    if (!historyData[songTitle] || !historyData[songTitle].length) return;
+                    // Initialize temp dates with valid defaults
+                    setTempStartDate(historyData[songTitle][0].date);
+                    setTempEndDate(historyData[songTitle][historyData[songTitle].length - 1].date);
+                }, [songTitle]);
+
                 const validateDates = (start, end) => {
                     if (!start || !end) return false;
                     const startDate = new Date(start);
                     const endDate = new Date(end);
-                    const minDate = historyData[songTitle] ? new Date(historyData[songTitle][0].date) : new Date();
-                    const maxDate = historyData[songTitle] ? new Date(historyData[songTitle][historyData[songTitle].length - 1].date) : new Date();
-                    return startDate <= endDate && startDate >= minDate && endDate <= maxDate;
+                    return startDate <= endDate && !isNaN(startDate) && !isNaN(endDate);
                 };
 
                 const handleApplyCustomDates = () => {
@@ -308,12 +313,12 @@
                         setCustomStartDate(tempStartDate);
                         setCustomEndDate(tempEndDate);
                     } else {
-                        alert('Invalid date range. Ensure start date is before end date and within available data.');
+                        alert('Invalid date range. Please select valid dates.');
                     }
                 };
 
                 React.useEffect(() => {
-                    if (!songTitle || !historyData[songTitle]) {
+                    if (!songTitle || !historyData[songTitle] || !historyData[songTitle].length) {
                         console.log(`No history data for song: ${songTitle}`);
                         return;
                     }
@@ -325,7 +330,7 @@
                     let history = historyData[songTitle];
                     let startDate, endDate;
 
-                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                    if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
                         startDate = new Date(customStartDate);
                         endDate = new Date(customEndDate);
                     } else {
@@ -356,7 +361,6 @@
 
                     const labels = history.map(entry => {
                         const date = new Date(entry.date + 'T00:00:00Z');
-                        console.log(`Raw date for ${entry.date}: ${date.toISOString()}`);
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                     });
                     const dailyData = history.map(entry => entry.daily);
@@ -463,11 +467,11 @@
                 }, [songTitle, dateRange, customStartDate, customEndDate]);
 
                 const getDateRangeText = () => {
-                    if (!historyData[songTitle]) return '';
+                    if (!historyData[songTitle] || !historyData[songTitle].length) return '';
                     let history = historyData[songTitle];
                     let startDate, endDate;
 
-                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                    if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
                         startDate = new Date(customStartDate + 'T00:00:00Z');
                         endDate = new Date(customEndDate + 'T00:00:00Z');
                     } else {
@@ -485,17 +489,17 @@
                 };
 
                 const getCurrentTotalStreams = () => {
-                    if (!historyData[songTitle]) return 0;
+                    if (!historyData[songTitle] || !historyData[songTitle].length) return 0;
                     const history = historyData[songTitle];
                     return history[history.length - 1].streams;
                 };
 
                 const getPercentageChange = () => {
-                    if (!historyData[songTitle]) return { percentage: 0, isIncrease: true };
+                    if (!historyData[songTitle] || !historyData[songTitle].length) return { percentage: 0, isIncrease: true };
                     let history = historyData[songTitle];
                     let startDate, endDate;
 
-                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                    if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
                         startDate = new Date(customStartDate + 'T00:00:00Z');
                         endDate = new Date(customEndDate + 'T00:00:00Z');
                     } else {
@@ -614,7 +618,7 @@
                                                 value={tempStartDate}
                                                 onChange={(e) => setTempStartDate(e.target.value)}
                                                 min={historyData[songTitle] ? historyData[songTitle][0].date : ''}
-                                                max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                                max={tempEndDate || (historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : '')}
                                             />
                                         </div>
                                         <div className="flex flex-col w-full sm:w-auto">
