@@ -3,13 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Yeat Stats Tracker</title>
+    <title>Yeat Stats</title>
     <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/recharts/2.12.1/recharts.min.js"></script>
     <style>
         @media (max-width: 640px) {
             .table-container {
@@ -22,8 +21,6 @@
     <div id="root"></div>
 
     <script type="text/babel">
-        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts;
-
         const YeatStats = () => {
             const [activeTab, setActiveTab] = React.useState('songs');
             const [searchTerm, setSearchTerm] = React.useState('');
@@ -32,12 +29,9 @@
                 direction: 'desc'
             });
             const [songs, setSongs] = React.useState([]);
-            const [selectedSong, setSelectedSong] = React.useState(null);
-            const [historicalData, setHistoricalData] = React.useState({});
-            const [availableDates, setAvailableDates] = React.useState([]);
+            const [historyData, setHistoryData] = React.useState({});
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
-            const [chartView, setChartView] = React.useState(false);
             const [statsData, setStatsData] = React.useState({
                 headers: ['Total', 'As lead', 'Solo', 'As feature (*)'],
                 rows: [
@@ -60,35 +54,69 @@
             ]);
 
             React.useEffect(() => {
-                loadAllDataFiles();
+                loadAllData();
             }, []);
 
-            const loadAllDataFiles = async () => {
+            const loadAllData = async () => {
                 try {
                     setLoading(true);
                     setError(null);
-                    
-                    // First, we need to get a list of all CSV files
-                    // This is a placeholder - in a real app, you'd need a server endpoint to list files
-                    // For now, let's simulate fetching available dates
-                    const dateFiles = await fetchAvailableDateFiles();
-                    setAvailableDates(dateFiles);
-                    
-                    // Load the latest date file for the initial view
-                    if (dateFiles.length > 0) {
-                        const latestDate = dateFiles[dateFiles.length - 1];
-                        const latestData = await loadDataFromFile(latestDate);
-                        
-                        // Process the latest data
-                        setSongs(latestData);
-                        calculateStats(latestData);
-                        
-                        // Now load all historical data
-                        const history = await loadHistoricalData(dateFiles);
-                        setHistoricalData(history);
-                    } else {
-                        setError("No data files found");
+
+                    // Generate list of dates from start of 2025 to today
+                    const startDate = new Date('2025-01-01');
+                    const endDate = new Date();
+                    const dates = [];
+                    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                        const dateStr = d.toISOString().split('T')[0]; // yyyy-mm-dd
+                        dates.push(dateStr);
                     }
+
+                    // Fetch all CSV files
+                    const history = {};
+                    for (const date of dates) {
+                        try {
+                            const response = await fetch(`/${date}.csv`);
+                            if (response.ok) {
+                                const text = await response.text();
+                                const parsedData = await new Promise((resolve, reject) => {
+                                    Papa.parse(text, {
+                                        header: true,
+                                        skipEmptyLines: true,
+                                        transformHeader: header => header.trim(),
+                                        complete: (results) => resolve(results.data),
+                                        error: (err) => reject(err)
+                                    });
+                                });
+
+                                parsedData.forEach(row => {
+                                    const title = row.Song || '';
+                                    if (title) {
+                                        if (!history[title]) {
+                                            history[title] = [];
+                                        }
+                                        history[title].push({
+                                            date,
+                                            streams: parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0,
+                                            daily: parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0,
+                                            album: row.Album || ''
+                                        });
+                                    }
+                                });
+                            }
+                        } catch (err) {
+                            console.warn(`Failed to load ${date}.csv: ${err.message}`);
+                        }
+                    }
+
+                    // Process the latest data for songs and albums (use the most recent date)
+                    const latestDate = dates[dates.length - 1];
+                    const latestResponse = await fetch(`/${latestDate}.csv`);
+                    if (!latestResponse.ok) {
+                        throw new Error(`Failed to load latest CSV file: ${latestResponse.status}`);
+                    }
+                    const latestText = await latestResponse.text();
+                    processCSVData(latestText);
+                    setHistoryData(history);
                 } catch (error) {
                     console.error('Error loading data:', error);
                     setError(error.message);
@@ -97,129 +125,50 @@
                 }
             };
 
-            const fetchAvailableDateFiles = async () => {
-                // In a real implementation, this would call an API endpoint
-                // For demo purposes, let's generate the last 90 days
-                const dates = [];
-                const today = new Date();
-                
-                for (let i = 90; i >= 0; i--) {
-                    const date = new Date(today);
-                    date.setDate(date.getDate() - i);
-                    const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-                    dates.push(formattedDate);
-                }
-                
-                return dates;
-            };
-
-            const loadDataFromFile = async (dateStr) => {
-                try {
-                    // In a real implementation, you'd fetch the specific file
-                    // For demo, we'll simulate by modifying the sample data slightly based on the date
-                    const response = await fetch('/Numbers.csv');
-                    
-                    if (!response.ok) {
-                        throw new Error(`Failed to load CSV file: ${response.status} ${response.statusText}`);
-                    }
-                    
-                    const text = await response.text();
-                    return processCSVData(text, dateStr);
-                } catch (error) {
-                    console.error(`Error loading data for ${dateStr}:`, error);
-                    throw error;
-                }
-            };
-            
-            const loadHistoricalData = async (dateFiles) => {
-                const history = {};
-                
-                // Process each date file
-                for (const dateStr of dateFiles) {
-                    try {
-                        const dataSongs = await loadDataFromFile(dateStr);
-                        
-                        // Add each song's data to its history
-                        dataSongs.forEach(song => {
-                            const key = `${song.title}|${song.album}`;
-                            
-                            if (!history[key]) {
-                                history[key] = [];
-                            }
-                            
-                            history[key].push({
-                                date: dateStr,
-                                streams: song.streams,
-                                daily: song.daily
-                            });
-                        });
-                    } catch (error) {
-                        console.error(`Error processing ${dateStr}:`, error);
-                    }
-                }
-                
-                return history;
-            };
-
-            const processCSVData = (csvText, dateStr = null) => {
-                // Parse the CSV data
-                const results = Papa.parse(csvText, {
+            const processCSVData = (csvText) => {
+                Papa.parse(csvText, {
                     header: true,
                     skipEmptyLines: true,
-                    transformHeader: header => header.trim()
+                    transformHeader: header => header.trim(),
+                    complete: (results) => {
+                        if (!results.data || results.data.length === 0) {
+                            setError('No data found in CSV');
+                            return;
+                        }
+
+                        const processedSongs = results.data
+                            .map(row => ({
+                                title: row.Song || '',
+                                album: row.Album || '',
+                                streams: parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0,
+                                daily: parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0
+                            }))
+                            .filter(song => song.streams && song.daily);
+
+                        setSongs(processedSongs);
+                        calculateStats(processedSongs);
+                    },
+                    error: (error) => {
+                        setError('Error parsing CSV: ' + error.message);
+                    }
                 });
-                
-                if (!results.data || results.data.length === 0) {
-                    throw new Error('No data found in CSV');
-                }
-                
-                // Process the songs data
-                const processedSongs = results.data
-                    .map(row => {
-                        // For simulation purposes, vary the numbers slightly based on the date
-                        // In a real app, you'd use the actual data from each date's file
-                        const dateObj = dateStr ? new Date(dateStr) : new Date();
-                        const daysFactor = dateStr ? 
-                            (new Date() - dateObj) / (1000 * 60 * 60 * 24) / 90 : 0;
-                        
-                        const streams = parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0;
-                        const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
-                        
-                        // Reduce streams and daily counts for older dates
-                        const adjustedStreams = Math.max(0, Math.floor(streams * (1 - daysFactor * 0.2)));
-                        const adjustedDaily = Math.max(0, Math.floor(daily * (1 - daysFactor * 0.3 + Math.random() * 0.1)));
-                        
-                        return {
-                            title: row.Song || '',
-                            album: row.Album || '',
-                            streams: adjustedStreams,
-                            daily: adjustedDaily
-                        };
-                    })
-                    .filter(song => song.title && song.album);
-                
-                return processedSongs;
             };
 
             const calculateStats = (processedSongs) => {
-                // Calculate total stats
                 const totalStreams = processedSongs.reduce((sum, song) => sum + song.streams, 0);
                 const totalDaily = processedSongs.reduce((sum, song) => sum + song.daily, 0);
                 const totalTracks = processedSongs.length;
 
-                // Calculate feature tracks
                 const featureTracks = processedSongs.filter(song => song.album === "Features");
                 const featureStreams = featureTracks.reduce((sum, song) => sum + song.streams, 0);
                 const featureDaily = featureTracks.reduce((sum, song) => sum + song.daily, 0);
                 const featureCount = featureTracks.length;
 
-                // Calculate lead tracks
                 const leadTracks = processedSongs.filter(song => song.album !== "Features");
                 const leadStreams = leadTracks.reduce((sum, song) => sum + song.streams, 0);
                 const leadDaily = leadTracks.reduce((sum, song) => sum + song.daily, 0);
                 const leadCount = leadTracks.length;
 
-                // Calculate solo tracks
                 const soloTracks = leadTracks.filter(song => !song.title.toLowerCase().includes("feat."));
                 const soloStreams = soloTracks.reduce((sum, song) => sum + song.streams, 0);
                 const soloDaily = soloTracks.reduce((sum, song) => sum + song.daily, 0);
@@ -243,7 +192,6 @@
                     ]
                 });
 
-                // Calculate album statistics
                 const albumStats = albums.map(album => {
                     const albumSongs = processedSongs.filter(song => song.album === album.title);
                     return {
@@ -294,7 +242,10 @@
                 )),
                 albums: getSortedData(albums.filter(album =>
                     album.title.toLowerCase().includes(searchTerm.toLowerCase())
-                ))
+                )),
+                history: Object.keys(historyData)
+                    .filter(title => title.toLowerCase().includes(searchTerm.toLowerCase()))
+                    .map(title => ({ title, data: historyData[title] }))
             };
 
             const getSortIndicator = (key) => {
@@ -302,146 +253,6 @@
                     return sortConfig.direction === 'asc' ? ' ↑' : ' ↓';
                 }
                 return '';
-            };
-
-            const handleSongClick = (song) => {
-                const songKey = `${song.title}|${song.album}`;
-                const songData = historicalData[songKey] || [];
-                
-                setSelectedSong({
-                    ...song,
-                    history: songData.sort((a, b) => a.date.localeCompare(b.date))
-                });
-                
-                setChartView(true);
-            };
-
-            const backToList = () => {
-                setChartView(false);
-                setSelectedSong(null);
-            };
-
-            const ChartView = () => {
-                if (!selectedSong || !selectedSong.history || selectedSong.history.length === 0) {
-                    return (
-                        <div className="text-center py-12 text-white/60">
-                            No historical data available for this song.
-                        </div>
-                    );
-                }
-                
-                // Format the chart data
-                const chartData = selectedSong.history.map(entry => ({
-                    date: entry.date,
-                    streams: entry.streams,
-                    daily: entry.daily
-                }));
-                
-                // Format dates for readable display
-                const formatDate = (dateStr) => {
-                    const date = new Date(dateStr);
-                    return `${date.getMonth() + 1}/${date.getDate()}`;
-                };
-                
-                return (
-                    <div className="w-full">
-                        <div className="mb-6">
-                            <button 
-                                className="px-3 py-1 text-sm rounded-lg bg-black text-white/80 border border-white/20 hover:bg-white/10 mb-4"
-                                onClick={backToList}
-                            >
-                                ← Back to List
-                            </button>
-                            <h2 className="text-lg font-bold text-white mb-1">{selectedSong.title}</h2>
-                            <p className="text-sm text-white/60 mb-6">Album: {selectedSong.album}</p>
-                            
-                            <div className="flex flex-col md:flex-row gap-4 mb-8">
-                                <div className="p-4 bg-white/5 rounded-lg flex-1">
-                                    <h3 className="text-sm font-medium text-white/80 mb-2">Total Streams</h3>
-                                    <p className="text-2xl font-bold text-white">{formatNumber(selectedSong.streams)}</p>
-                                </div>
-                                <div className="p-4 bg-white/5 rounded-lg flex-1">
-                                    <h3 className="text-sm font-medium text-white/80 mb-2">Daily Streams</h3>
-                                    <p className="text-2xl font-bold text-white">{formatNumber(selectedSong.daily)}</p>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div className="mb-8">
-                            <h3 className="text-md font-bold text-white mb-4">Total Streams History</h3>
-                            <div className="h-64 md:h-80">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart
-                                        data={chartData}
-                                        margin={{ top: 5, right: 5, left: 5, bottom: 20 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                                        <XAxis 
-                                            dataKey="date" 
-                                            tick={{ fill: '#ccc', fontSize: 12 }} 
-                                            tickFormatter={formatDate}
-                                            interval="preserveStartEnd"
-                                        />
-                                        <YAxis 
-                                            tick={{ fill: '#ccc', fontSize: 12 }}
-                                            tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value}
-                                        />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: '#222', border: 'none', borderRadius: '4px' }}
-                                            formatter={(value) => [formatNumber(value), 'Streams']}
-                                            labelFormatter={(label) => formatDate(label)}
-                                        />
-                                        <Line 
-                                            type="monotone" 
-                                            dataKey="streams" 
-                                            stroke="#10b981" 
-                                            strokeWidth={2}
-                                            dot={false}
-                                            activeDot={{ r: 6, fill: '#10b981' }}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                        
-                        <div>
-                            <h3 className="text-md font-bold text-white mb-4">Daily Streams History</h3>
-                            <div className="h-64 md:h-80">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart
-                                        data={chartData}
-                                        margin={{ top: 5, right: 5, left: 5, bottom: 20 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                                        <XAxis 
-                                            dataKey="date" 
-                                            tick={{ fill: '#ccc', fontSize: 12 }} 
-                                            tickFormatter={formatDate}
-                                            interval="preserveStartEnd"
-                                        />
-                                        <YAxis 
-                                            tick={{ fill: '#ccc', fontSize: 12 }}
-                                            tickFormatter={(value) => value >= 1000000 ? `${(value / 1000000).toFixed(1)}M` : value >= 1000 ? `${(value / 1000).toFixed(0)}K` : value}
-                                        />
-                                        <Tooltip 
-                                            contentStyle={{ backgroundColor: '#222', border: 'none', borderRadius: '4px' }}
-                                            formatter={(value) => [formatNumber(value), 'Daily Streams']}
-                                            labelFormatter={(label) => formatDate(label)}
-                                        />
-                                        <Line 
-                                            type="monotone" 
-                                            dataKey="daily" 
-                                            stroke="#8884d8" 
-                                            strokeWidth={2}
-                                            dot={false}
-                                            activeDot={{ r: 6, fill: '#8884d8' }}
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
-                );
             };
 
             return (
@@ -461,8 +272,6 @@
                             <div className="text-center py-8 text-white/60">
                                 Loading data... Please wait.
                             </div>
-                        ) : chartView ? (
-                            <ChartView />
                         ) : (
                             <>
                                 <div className="overflow-x-auto mb-4 sm:mb-8 table-container">
@@ -512,6 +321,16 @@
                                         >
                                             Albums
                                         </button>
+                                        <button 
+                                            className={`flex-1 sm:flex-none px-4 sm:px-6 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                                activeTab === 'history' 
+                                                ? 'bg-white text-black' 
+                                                : 'bg-black text-white/80 border border-white/20 hover:bg-white/10'
+                                            }`}
+                                            onClick={() => setActiveTab('history')}
+                                        >
+                                            History
+                                        </button>
                                     </div>
                                     <input
                                         type="text"
@@ -522,76 +341,97 @@
                                     />
                                 </div>
 
-                                <div className="overflow-x-auto table-container">
-                                    <table className="min-w-full">
-                                        <thead>
-                                            <tr className="border-b border-white/10">
-                                                <th className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">#</th>
-                                                <th 
-                                                    className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
-                                                    onClick={() => requestSort('title')}
-                                                >
-                                                    {activeTab === 'songs' ? 'Song' : 'Album'} Title
-                                                    {getSortIndicator('title')}
-                                                </th>
-                                                {activeTab === 'songs' && (
+                                {activeTab === 'history' ? (
+                                    <div className="overflow-x-auto table-container">
+                                        <table className="min-w-full">
+                                            <thead>
+                                                <tr className="border-b border-white/10">
+                                                    <th className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">#</th>
                                                     <th 
                                                         className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
-                                                        onClick={() => requestSort('album')}
+                                                        onClick={() => requestSort('title')}
                                                     >
-                                                        Album{getSortIndicator('album')}
+                                                        Song Title{getSortIndicator('title')}
                                                     </th>
-                                                )}
-                                                {activeTab === 'albums' && (
-                                                    <th className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">Tracks</th>
-                                                )}
-                                                <th 
-                                                    className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
-                                                    onClick={() => requestSort('streams')}
-                                                >
-                                                    Streams{getSortIndicator('streams')}
-                                                </th>
-                                                <th 
-                                                    className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
-                                                    onClick={() => requestSort('daily')}
-                                                >
-                                                    Daily{getSortIndicator('daily')}
-                                                </th>
-                                                {activeTab === 'songs' && (
-                                                    <th className="text-center px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">Chart</th>
-                                                )}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {filteredData[activeTab].map((item, index) => (
-                                                <tr key={item.title + index} className={index % 2 === 0 ? 'bg-black' : 'bg-white/5'}>
-                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{index + 1}</td>
-                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">
-                                                        {item.title}
-                                                    </td>
+                                                    <th className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">Album</th>
+                                                    <th className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">History (Date: Streams / Daily)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {filteredData.history.map((item, index) => (
+                                                    <tr key={item.title + index} className={index % 2 === 0 ? 'bg-black' : 'bg-white/5'}>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{index + 1}</td>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">{item.title}</td>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{item.data[0]?.album || ''}</td>
+                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">
+                                                            {item.data.map((entry, i) => (
+                                                                <div key={i}>
+                                                                    {entry.date}: {formatNumber(entry.streams)} / {formatNumber(entry.daily)}
+                                                                </div>
+                                                            ))}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                ) : (
+                                    <div className="overflow-x-auto table-container">
+                                        <table className="min-w-full">
+                                            <thead>
+                                                <tr className="border-b border-white/10">
+                                                    <th className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">#</th>
+                                                    <th 
+                                                        className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
+                                                        onClick={() => requestSort('title')}
+                                                    >
+                                                        {activeTab === 'songs' ? 'Song' : 'Album'} Title
+                                                        {getSortIndicator('title')}
+                                                    </th>
                                                     {activeTab === 'songs' && (
-                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{item.album}</td>
+                                                        <th 
+                                                            className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
+                                                            onClick={() => requestSort('album')}
+                                                        >
+                                                            Album{getSortIndicator('album')}
+                                                        </th>
                                                     )}
                                                     {activeTab === 'albums' && (
-                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{item.tracks}</td>
+                                                        <th className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">Tracks</th>
                                                     )}
-                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.streams)}</td>
-                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.daily)}</td>
-                                                    {activeTab === 'songs' && (
-                                                        <td className="text-center px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">
-                                                            <button 
-                                                                className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-white/80 transition-colors"
-                                                                onClick={() => handleSongClick(item)}
-                                                            >
-                                                                View
-                                                            </button>
-                                                        </td>
-                                                    )}
+                                                    <th 
+                                                        className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
+                                                        onClick={() => requestSort('streams')}
+                                                    >
+                                                        Streams{getSortIndicator('streams')}
+                                                    </th>
+                                                    <th 
+                                                        className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
+                                                        onClick={() => requestSort('daily')}
+                                                    >
+                                                        Daily{getSortIndicator('daily')}
+                                                    </th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody>
+                                                {filteredData[activeTab].map((item, index) => (
+                                                    <tr key={item.title + index} className={index % 2 === 0 ? 'bg-black' : 'bg-white/5'}>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{index + 1}</td>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">{item.title}</td>
+                                                        {activeTab === 'songs' && (
+                                                            <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{item.album}</td>
+                                                        )}
+                                                        {activeTab === 'albums' && (
+                                                            <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{item.tracks}</td>
+                                                        )}
+                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.streams)}</td>
+                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.daily)}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
