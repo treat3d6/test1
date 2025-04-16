@@ -82,9 +82,7 @@
         .percentage-change {
             margin-top: 1rem;
             padding: 0.5rem;
-            background: rgba(255, 255, 255, 0.1);
             border-radius: 0.5rem;
-            color: white;
             font-size: 0.875rem;
         }
     </style>
@@ -428,31 +426,22 @@
                     !compareItems.includes(isAlbum ? item.title : (item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`))
                 );
 
-                const calculatePercentageChange = (history) => {
-                    if (!history || history.length < 2) return [];
-                    const changes = [];
-                    for (let i = 1; i < history.length; i++) {
-                        const current = history[i].daily || 0;
-                        const previous = history[i - 1].daily || 0;
-                        if (previous !== 0) {
-                            const change = ((current - previous) / previous) * 100;
-                            changes.push({
-                                date: history[i].date,
-                                change: change.toFixed(2)
-                            });
-                        } else if (current !== 0) {
-                            changes.push({
-                                date: history[i].date,
-                                change: 'N/A (Previous day was 0)'
-                            });
-                        } else {
-                            changes.push({
-                                date: history[i].date,
-                                change: '0.00'
-                            });
-                        }
+                const calculateOverallPercentageChange = (history, dateLabels) => {
+                    if (!history || history.length < 1 || !dateLabels || dateLabels.length < 1) return null;
+                    const firstDate = new Date(dateLabels[0]);
+                    const lastDate = new Date(dateLabels[dateLabels.length - 1]);
+                    const firstEntry = history.find(e => new Date(e.date).toDateString() === firstDate.toDateString());
+                    const lastEntry = history.find(e => new Date(e.date).toDateString() === lastDate.toDateString());
+                    const firstDaily = firstEntry ? firstEntry.daily || 0 : 0;
+                    const lastDaily = lastEntry ? lastEntry.daily || 0 : 0;
+
+                    if (firstDaily === 0 && lastDaily === 0) return '0.00';
+                    if (firstDaily === 0 && lastDaily !== 0) return 'N/A (First day was 0)';
+                    if (firstDaily !== 0) {
+                        const change = ((lastDaily - firstDaily) / firstDaily) * 100;
+                        return change.toFixed(2);
                     }
-                    return changes;
+                    return null;
                 };
 
                 React.useEffect(() => {
@@ -676,7 +665,10 @@
                 };
 
                 const showPercentageChange = compareItems.length === 1 && dateRange !== 'all';
-                const percentageChanges = showPercentageChange ? calculatePercentageChange(historyData[compareItems[0]] || []) : [];
+                const percentageChange = showPercentageChange ? calculateOverallPercentageChange(historyData[compareItems[0]] || [], dateLabels) : null;
+                const changeColor = percentageChange && percentageChange !== 'N/A (First day was 0)' && percentageChange !== '0.00' 
+                    ? parseFloat(percentageChange) >= 0 ? 'text-green-500' : 'text-red-500'
+                    : 'text-white';
 
                 return (
                     <div className="modal-overlay" onClick={onClose}>
@@ -816,15 +808,9 @@
                                 </div>
                             )}
                             {showPercentageChange && (
-                                <div className="percentage-change">
-                                    <h3 className="font-bold mb-2">Daily Percentage Change</h3>
-                                    <ul>
-                                        {percentageChanges.map((change, index) => (
-                                            <li key={index}>
-                                                {change.date}: {change.change}%
-                                            </li>
-                                        ))}
-                                    </ul>
+                                <div className={`percentage-change ${changeColor}`}>
+                                    <h3 className="font-bold mb-2">Overall Percentage Change</h3>
+                                    <p>{percentageChange}%</p>
                                 </div>
                             )}
                         </div>
