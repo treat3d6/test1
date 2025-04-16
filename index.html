@@ -19,6 +19,48 @@
             .table-container {
                 -webkit-overflow-scrolling: touch;
             }
+            .modal-content {
+                width: 95%;
+                max-height: 85vh;
+                padding: 1rem;
+            }
+            .chart-container {
+                height: 40vh !important;
+            }
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: black;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+            position: relative;
+        }
+        .close-button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
         }
     </style>
 </head>
@@ -61,7 +103,6 @@
             ]);
 
             React.useEffect(() => {
-                // Clear historyData to prevent stale data
                 setHistoryData({});
                 loadAllData();
             }, []);
@@ -78,18 +119,14 @@
                     let fileCount = 0;
                     const processedDates = [];
 
-                    // Start from Jan 1, 2024, to allow historical data
                     const startDate = new Date('2024-01-01');
-                    // End at the current date to allow for daily additions
-                    const endDate = new Date(); // Today is April 15, 2025
+                    const endDate = new Date();
                     const today = new Date();
 
-                    // Loop through all dates in the specified range
                     let dateIterator = new Date(startDate);
                     while (dateIterator <= endDate) {
                         const dateStr = dateIterator.toISOString().split('T')[0];
                         try {
-                            // Check if the date is in the future
                             const currentDate = new Date(dateStr);
                             if (currentDate > today) {
                                 console.log(`Skipping future date: ${dateStr}`);
@@ -97,9 +134,8 @@
                                 continue;
                             }
 
-                            // Add cache-busting query parameter to prevent caching
                             const response = await fetch(`./${dateStr}.csv?t=${Date.now()}`, {
-                                cache: 'no-store' // Prevent caching
+                                cache: 'no-store'
                             });
                             if (response.ok) {
                                 const text = await response.text();
@@ -150,10 +186,8 @@
                         throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2024-01-01.csv to 2025-04-14.csv in the root directory.');
                     }
 
-                    // Sort history data for each song by date
                     Object.keys(history).forEach(title => {
                         history[title].sort((a, b) => new Date(a.date) - new Date(b.date));
-                        // Log the date range for this song
                         console.log(`Song: ${title}, Date range: ${history[title][0].date} to ${history[title][history[title].length - 1].date}`);
                     });
 
@@ -251,7 +285,7 @@
                 setAlbums(albumStats);
             };
 
-            const SongChart = ({ songTitle }) => {
+            const SongChart = ({ songTitle, onClose }) => {
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
                 const [dateRange, setDateRange] = React.useState('all');
@@ -265,13 +299,10 @@
                         return;
                     }
 
-                    // Log the raw history data for this song
                     console.log(`Raw history data for ${songTitle}:`, historyData[songTitle]);
-                    // Log just the dates for clarity
                     const dates = historyData[songTitle].map(entry => entry.date);
                     console.log(`Dates for ${songTitle}: ${dates.join(', ')}`);
 
-                    // Filter data based on selected date range
                     let history = historyData[songTitle];
                     let startDate, endDate;
 
@@ -301,7 +332,6 @@
                         return;
                     }
 
-                    // Log filtered history dates
                     const filteredDates = history.map(entry => entry.date);
                     console.log(`Filtered dates for ${songTitle}: ${filteredDates.join(', ')}`);
 
@@ -347,7 +377,9 @@
                                         color: '#ffffff',
                                         font: {
                                             size: 12
-                                        }
+                                        },
+                                        maxRotation: 45,
+                                        minRotation: 45
                                     },
                                     grid: {
                                         color: 'rgba(255, 255, 255, 0.1)'
@@ -411,7 +443,6 @@
                     };
                 }, [songTitle, dateRange, customStartDate, customEndDate]);
 
-                // Calculate date range for display
                 const getDateRangeText = () => {
                     if (!historyData[songTitle]) return '';
                     let history = historyData[songTitle];
@@ -434,14 +465,12 @@
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
 
-                // Get current total streams (latest date)
                 const getCurrentTotalStreams = () => {
                     if (!historyData[songTitle]) return 0;
                     const history = historyData[songTitle];
                     return history[history.length - 1].streams;
                 };
 
-                // Calculate percentage change in daily streams
                 const getPercentageChange = () => {
                     if (!historyData[songTitle]) return { percentage: 0, isIncrease: true };
                     let history = historyData[songTitle];
@@ -479,106 +508,105 @@
                 const { percentage, isIncrease } = getPercentageChange();
 
                 return (
-                    <div className="mt-6 p-4 bg-black border border-white/20 rounded-lg">
-                        <div className="mb-4">
-                            <h2 className="text-lg font-bold text-white">
-                                {songTitle} • {getCurrentTotalStreams().toLocaleString()} Total Streams
-                            </h2>
-                            <div className="flex justify-between items-center mt-2">
-                                <div>
-                                    <p className="text-sm text-white/60">{getDateRangeText()}</p>
-                                    {dateRange !== 'all' && (
-                                        <p className="text-sm mt-1">
-                                            <span className="text-white/60">Percentage Change: </span>
-                                            <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
-                                                {isIncrease ? '+' : '-'}{percentage}%
-                                            </span>
-                                        </p>
-                                    )}
+                    <div className="modal-overlay" onClick={onClose}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <button className="close-button" onClick={onClose}>
+                                ×
+                            </button>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-bold text-white sm:text-xl">
+                                    {songTitle} • {getCurrentTotalStreams().toLocaleString()} Total Streams
+                                </h2>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-2 gap-2">
+                                    <div>
+                                        <p className="text-sm text-white/60">{getDateRangeText()}</p>
+                                        {dateRange !== 'all' && (
+                                            <p className="text-sm mt-1">
+                                                <span className="text-white/60">Percentage Change: </span>
+                                                <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
+                                                    {isIncrease ? '+' : '-'}{percentage}%
+                                                </span>
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2 flex-wrap">
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '7' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('7');
+                                                setShowCustomPicker(false);
+                                            }}
+                                        >
+                                            Last 7 days
+                                        </button>
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '28' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('28');
+                                                setShowCustomPicker(false);
+                                            }}
+                                        >
+                                            Last 28 days
+                                        </button>
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '90' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('90');
+                                                setShowCustomPicker(false);
+                                            }}
+                                        >
+                                            Last 90 days
+                                        </button>
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'all' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('all');
+                                                setShowCustomPicker(false);
+                                            }}
+                                        >
+                                            All
+                                        </button>
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('custom');
+                                                setShowCustomPicker(true);
+                                            }}
+                                        >
+                                            Custom
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex gap-2 flex-wrap">
-                                    <button
-                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '7' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                        onClick={() => {
-                                            setDateRange('7');
-                                            setShowCustomPicker(false);
-                                        }}
-                                    >
-                                        Last 7 days
-                                    </button>
-                                    <button
-                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '28' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                        onClick={() => {
-                                            setDateRange('28');
-                                            setShowCustomPicker(false);
-                                        }}
-                                    >
-                                        Last 28 days
-                                    </button>
-                                    <button
-                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '90' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                        onClick={() => {
-                                            setDateRange('90');
-                                            setShowCustomPicker(false);
-                                        }}
-                                    >
-                                        Last 90 days
-                                    </button>
-                                    <button
-                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'all' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                        onClick={() => {
-                                            setDateRange('all');
-                                            setShowCustomPicker(false);
-                                        }}
-                                    >
-                                        All
-                                    </button>
-                                    <button
-                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                        onClick={() => {
-                                            setDateRange('custom');
-                                            setShowCustomPicker(true);
-                                        }}
-                                    >
-                                        Custom
-                                    </button>
-                                    <button
-                                        className="px-4 py-2 text-sm font-medium text-white bg-black border border-white/20 rounded-lg hover:bg-white/10"
-                                        onClick={() => setSelectedSong(null)}
-                                    >
-                                        Close
-                                    </button>
-                                </div>
+                                {showCustomPicker && dateRange === 'custom' && (
+                                    <div className="mt-4 flex flex-col sm:flex-row gap-4">
+                                        <div>
+                                            <label className="text-sm text-white/60">Start Date:</label>
+                                            <input
+                                                type="date"
+                                                className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full sm:w-auto"
+                                                value={customStartDate || ''}
+                                                onChange={(e) => setCustomStartDate(e.target.value)}
+                                                min={historyData[songTitle] ? historyData[songTitle][0].date : ''}
+                                                max={customEndDate || historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-sm text-white/60">End Date:</label>
+                                            <input
+                                                type="date"
+                                                className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full sm:w-auto"
+                                                value={customEndDate || ''}
+                                                onChange={(e) => setCustomEndDate(e.target.value)}
+                                                min={customStartDate || historyData[songTitle] ? historyData[songTitle][0].date : ''}
+                                                max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            {showCustomPicker && dateRange === 'custom' && (
-                                <div className="mt-4 flex gap-4">
-                                    <div>
-                                        <label className="text-sm text-white/60">Start Date:</label>
-                                        <input
-                                            type="date"
-                                            className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40"
-                                            value={customStartDate || ''}
-                                            onChange={(e) => setCustomStartDate(e.target.value)}
-                                            min={historyData[songTitle] ? historyData[songTitle][0].date : ''}
-                                            max={customEndDate || historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm text-white/60">End Date:</label>
-                                        <input
-                                            type="date"
-                                            className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40"
-                                            value={customEndDate || ''}
-                                            onChange={(e) => setCustomEndDate(e.target.value)}
-                                            min={customStartDate || historyData[songTitle] ? historyData[songTitle][0].date : ''}
-                                            max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        <div className="h-64">
-                            <canvas ref={canvasRef}></canvas>
+                            <div className="chart-container h-[50vh] sm:h-[60vh]">
+                                <canvas ref={canvasRef}></canvas>
+                            </div>
                         </div>
                     </div>
                 );
@@ -787,7 +815,10 @@
                                 </div>
 
                                 {activeTab === 'songs' && selectedSong && historyData[selectedSong] && (
-                                    <SongChart songTitle={selectedSong} />
+                                    <SongChart 
+                                        songTitle={selectedSong} 
+                                        onClose={() => setSelectedSong(null)}
+                                    />
                                 )}
                             </>
                         )}
