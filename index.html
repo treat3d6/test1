@@ -136,6 +136,8 @@
                     // Sort history data for each song by date
                     Object.keys(history).forEach(title => {
                         history[title].sort((a, b) => new Date(a.date) - new Date(b.date));
+                        // Log the date range for this song
+                        console.log(`Song: ${title}, Date range: ${history[title][0].date} to ${history[title][history[title].length - 1].date}`);
                     });
 
                     console.log(`Processed ${fileCount} CSV files. Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
@@ -309,7 +311,7 @@
                                         }
                                     },
                                     grid: {
-                                        color: 'rgba(255, 255, 255, 0.1)'
+                                        color: 'rgba(255, 255, 251, 0.1)'
                                     }
                                 },
                                 y: {
