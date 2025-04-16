@@ -74,16 +74,25 @@
                     let fileCount = 0;
                     const processedDates = [];
 
-                    // Start from Jan 1, 2025, as per user's confirmation
-                    const startDate = new Date('2025-01-01');
+                    // Start from Jan 1, 2024, to allow historical data
+                    const startDate = new Date('2024-01-01');
                     // End at the current date to allow for daily additions
                     const endDate = new Date(); // Today is April 15, 2025
+                    const today = new Date();
 
                     // Loop through all dates in the specified range
                     let dateIterator = new Date(startDate);
                     while (dateIterator <= endDate) {
                         const dateStr = dateIterator.toISOString().split('T')[0];
                         try {
+                            // Check if the date is in the future
+                            const currentDate = new Date(dateStr);
+                            if (currentDate > today) {
+                                console.log(`Skipping future date: ${dateStr}`);
+                                dateIterator.setDate(dateIterator.getDate() + 1);
+                                continue;
+                            }
+
                             // Add cache-busting query parameter to prevent caching
                             const response = await fetch(`./${dateStr}.csv?t=${Date.now()}`, {
                                 cache: 'no-store' // Prevent caching
@@ -134,7 +143,7 @@
                     }
 
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-01-01.csv to 2025-04-14.csv in the root directory.');
+                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2024-01-01.csv to 2025-04-14.csv in the root directory.');
                     }
 
                     // Sort history data for each song by date
@@ -231,7 +240,7 @@
                     return {
                         title: album.title,
                         streams: albumSongs.reduce((sum, song) => sum + song.streams, 0),
-                        daily: albumSongs.reduce((sum, song) => sum + song.daily, 0), // Fixed typo: 'rylic' to 'song.daily'
+                        daily: albumSongs.reduce((sum, song) => sum + song.daily, 0),
                         tracks: albumSongs.length
                     };
                 });
@@ -254,6 +263,9 @@
 
                     // Log the raw history data for this song
                     console.log(`Raw history data for ${songTitle}:`, historyData[songTitle]);
+                    // Log just the dates for clarity
+                    const dates = historyData[songTitle].map(entry => entry.date);
+                    console.log(`Dates for ${songTitle}: ${dates.join(', ')}`);
 
                     // Filter data based on selected date range
                     let history = historyData[songTitle];
