@@ -94,9 +94,10 @@
             });
             const [songs, setSongs] = React.useState([]);
             const [historyData, setHistoryData] = React.useState({});
+            const [albumHistoryData, setAlbumHistoryData] = React.useState({});
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
-            const [selectedSongs, setSelectedSongs] = React.useState([]);
+            const [selectedItems, setSelectedItems] = React.useState([]);
             const [latestDate, setLatestDate] = React.useState(null);
             const [statsData, setStatsData] = React.useState({
                 headers: ['Total', 'Lead', 'Solo', 'Features'],
@@ -121,6 +122,7 @@
 
             React.useEffect(() => {
                 setHistoryData({});
+                setAlbumHistoryData({});
                 loadAllData();
             }, []);
 
@@ -130,6 +132,7 @@
                     setError(null);
 
                     const rawHistory = {};
+                    const rawAlbumHistory = {};
                     let earliestDate = null;
                     let latestDate = null;
                     let latestResponse = null;
@@ -170,17 +173,33 @@
                                     const title = row.Song || '';
                                     const album = row.Album || '';
                                     const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
-                                    if (title) {
-                                        const key = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
-                                        if (!rawHistory[key]) {
-                                            rawHistory[key] = [];
+                                    const total = parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0;
+                                    if (title && album) {
+                                        const songKey = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
+                                        if (!rawHistory[songKey]) {
+                                            rawHistory[songKey] = [];
                                         }
-                                        rawHistory[key].push({
+                                        rawHistory[songKey].push({
                                             date: dateStr,
-                                            streams: parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0,
+                                            streams: total,
                                             daily: daily,
                                             album: album
                                         });
+
+                                        if (!rawAlbumHistory[album]) {
+                                            rawAlbumHistory[album] = [];
+                                        }
+                                        const existingAlbumEntry = rawAlbumHistory[album].find(e => e.date === dateStr);
+                                        if (existingAlbumEntry) {
+                                            existingAlbumEntry.streams += total;
+                                            existingAlbumEntry.daily += daily;
+                                        } else {
+                                            rawAlbumHistory[album].push({
+                                                date: dateStr,
+                                                streams: total,
+                                                daily: daily
+                                            });
+                                        }
                                     }
                                 });
 
@@ -203,22 +222,25 @@
                     }
 
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2024-01-01.csv to 2025-04-14.csv in the root directory.');
+                        throw new Error('No CSV files found in the repository.');
                     }
 
                     const history = {};
                     Object.keys(rawHistory).forEach(key => {
                         history[key] = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
-                        if (history[key].length > 0) {
-                            console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}, Entries: ${history[key].length}`);
-                        }
                     });
 
-                    console.log(`Processed ${fileCount} CSV files. Dates processed: ${processedDates.sort().join(', ')}`);
+                    const albumHistory = {};
+                    Object.keys(rawAlbumHistory).forEach(key => {
+                        albumHistory[key] = rawAlbumHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
+                    });
+
+                    console.log(`Processed ${fileCount} CSV files. Dates: ${processedDates.sort().join(', ')}`);
 
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
                     setHistoryData(history);
+                    setAlbumHistoryData(albumHistory);
                     setLatestDate(latestDate);
                 } catch (error) {
                     console.error('Error loading data:', error);
@@ -292,18 +314,9 @@
                 setStatsData({
                     headers: statsData.headers,
                     rows: [
-                        {
-                            label: 'Streams',
-                            values: [totalStreams, leadStreams, soloStreams, featureStreams]
-                        },
-                        {
-                            label: 'Daily',
-                            values: [totalDaily, leadDaily, soloDaily, featureDaily]
-                        },
-                        {
-                            label: 'Tracks',
-                            values: [totalTracks, leadCount, soloCount, featureCount]
-                        }
+                        { label: 'Streams', values: [totalStreams, leadStreams, soloStreams, featureStreams] },
+                        { label: 'Daily', values: [totalDaily, leadDaily, soloDaily, featureDaily] },
+                        { label: 'Tracks', values: [totalTracks, leadCount, soloCount, featureCount] }
                     ]
                 });
 
@@ -319,7 +332,7 @@
                 setAlbums(albumStats);
             };
 
-            const SongChart = ({ songKeys, songsData, onClose }) => {
+            const ComparisonChart = ({ itemKeys, itemsData, historyData, isAlbum, onClose }) => {
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
                 const [dateRange, setDateRange] = React.useState('all');
@@ -329,7 +342,7 @@
                 const [tempEndDate, setTempEndDate] = React.useState('');
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
                 const [chartError, setChartError] = React.useState(null);
-                const [compareSongs, setCompareSongs] = React.useState(songKeys);
+                const [compareItems, setCompareItems] = React.useState(itemKeys);
                 const [searchCompare, setSearchCompare] = React.useState('');
                 const [showSuggestions, setShowSuggestions] = React.useState(false);
 
@@ -358,25 +371,24 @@
                 };
 
                 const handleApplyCustomDates = () => {
-                    const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
+                    const histories = compareItems.map(key => historyData[key]).filter(Boolean);
                     if (validateDates(tempStartDate, tempEndDate, histories)) {
                         setCustomStartDate(tempStartDate);
                         setCustomEndDate(tempEndDate);
                         setChartError(null);
                     } else {
-                        setChartError('Invalid date range. Please select dates within the available data for all selected songs.');
+                        setChartError('Invalid date range. Please select dates within the available data.');
                     }
                 };
 
-                const handleSongSelect = (key) => {
-                    if (!compareSongs.includes(key) && compareSongs.length < 5) {
-                        const newCompareSongs = [...compareSongs, key];
-                        setCompareSongs(newCompareSongs);
+                const handleItemSelect = (key) => {
+                    if (!compareItems.includes(key) && compareItems.length < 5) {
+                        const newCompareItems = [...compareItems, key];
+                        setCompareItems(newCompareItems);
                         setSearchCompare('');
                         setShowSuggestions(false);
 
-                        // Reset custom dates if they become invalid
-                        const histories = newCompareSongs.map(k => historyData[k]).filter(Boolean);
+                        const histories = newCompareItems.map(k => historyData[k]).filter(Boolean);
                         if (customStartDate && customEndDate && !validateDates(customStartDate, customEndDate, histories)) {
                             setCustomStartDate('');
                             setCustomEndDate('');
@@ -388,12 +400,11 @@
                     }
                 };
 
-                const handleSongRemove = (key) => {
-                    const newCompareSongs = compareSongs.filter(k => k !== key);
-                    setCompareSongs(newCompareSongs);
+                const handleItemRemove = (key) => {
+                    const newCompareItems = compareItems.filter(k => k !== key);
+                    setCompareItems(newCompareItems);
 
-                    // Reset custom dates if they become invalid
-                    const histories = newCompareSongs.map(k => historyData[k]).filter(Boolean);
+                    const histories = newCompareItems.map(k => historyData[k]).filter(Boolean);
                     if (customStartDate && customEndDate && !validateDates(customStartDate, customEndDate, histories)) {
                         setCustomStartDate('');
                         setCustomEndDate('');
@@ -404,10 +415,9 @@
                     }
                 };
 
-                const filteredSongs = songsData.filter(song => 
-                    (song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
-                    song.album.toLowerCase().includes(searchCompare.toLowerCase())) &&
-                    !compareSongs.includes(song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`)
+                const filteredItems = itemsData.filter(item => 
+                    item.title.toLowerCase().includes(searchCompare.toLowerCase()) &&
+                    !compareItems.includes(isAlbum ? item.title : (item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`))
                 );
 
                 React.useEffect(() => {
@@ -416,8 +426,8 @@
                         return;
                     }
 
-                    if (!compareSongs.length || compareSongs.some(key => !historyData[key] || !historyData[key].length)) {
-                        setChartError('No data available for selected songs.');
+                    if (!compareItems.length || compareItems.some(key => !historyData[key] || !historyData[key].length)) {
+                        setChartError('No data available for selected items.');
                         return;
                     }
 
@@ -426,8 +436,7 @@
                         let maxDate = null;
                         const allDates = new Set();
 
-                        // Collect all dates where at least one song has data
-                        compareSongs.forEach(key => {
+                        compareItems.forEach(key => {
                             const history = historyData[key];
                             if (!history || !history.length) return;
 
@@ -440,7 +449,7 @@
                         });
 
                         let startDate, endDate;
-                        const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
+                        const histories = compareItems.map(key => historyData[key]).filter(Boolean);
                         if (dateRange === 'custom' && customStartDate && customEndDate && 
                             validateDates(customStartDate, customEndDate, histories)) {
                             startDate = new Date(customStartDate);
@@ -450,13 +459,12 @@
                             if (dateRange === 'all') {
                                 startDate = minDate;
                             } else {
-                                const days = parseInt(dateRange);
+                                const days = parseInt(dateRange) || 7;
                                 startDate = new Date(endDate);
                                 startDate.setDate(endDate.getDate() - days + 1);
                             }
                         }
 
-                        // Filter dates to only those with data for at least one song within the range
                         const dateLabels = Array.from(allDates)
                             .filter(date => {
                                 const d = new Date(date);
@@ -469,25 +477,22 @@
                             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                         });
 
-                        const datasets = compareSongs.map((key, index) => {
-                            let history = historyData[key];
-                            if (!history || !history.length) return null;
+                        const datasets = compareItems.map((key, index) => {
+                            const history = historyData[key] || [];
+                            if (!history.length) return null;
 
-                            const [title, album] = key.split('|');
-                            const displayTitle = title.toLowerCase() === 'already rich' ? 'Already Rich' : title;
+                            const label = isAlbum ? key : (() => {
+                                const [title, album] = key.split('|');
+                                return `${title.toLowerCase() === 'already rich' ? 'Already Rich' : title} (${album})`;
+                            })();
 
-                            // Only include data for dates where the song has an explicit entry
                             const dailyData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
                                 return entry && entry.daily !== null ? entry.daily : null;
                             });
-                            const totalStreamsData = dateLabels.map(date => {
-                                const entry = history.find(e => e.date === date);
-                                return entry && entry.streams !== null ? entry.streams : null;
-                            });
 
                             return {
-                                label: `${displayTitle} (${album})`,
+                                label,
                                 data: dailyData,
                                 borderColor: colors[index % colors.length],
                                 backgroundColor: colors[index % colors.length] + '33',
@@ -504,7 +509,12 @@
                             return;
                         }
 
-                        const ctx = canvasRef.current.getContext('2d');
+                        const ctx = canvasRef.current?.getContext('2d');
+                        if (!ctx) {
+                            setChartError('Failed to initialize chart.');
+                            return;
+                        }
+
                         if (chartRef.current) {
                             chartRef.current.destroy();
                         }
@@ -513,7 +523,7 @@
                             type: 'line',
                             data: {
                                 labels: allLabels,
-                                datasets: datasets
+                                datasets
                             },
                             options: {
                                 responsive: true,
@@ -562,8 +572,8 @@
                                             label: (context) => {
                                                 const datasetIndex = context.datasetIndex;
                                                 const dataIndex = context.dataIndex;
-                                                const key = compareSongs[datasetIndex];
-                                                const history = historyData[key];
+                                                const key = compareItems[datasetIndex];
+                                                const history = historyData[key] || [];
                                                 const date = dateLabels[dataIndex];
                                                 const entry = history.find(e => e.date === date);
                                                 return [
@@ -591,19 +601,19 @@
                         };
                     } catch (e) {
                         console.error('Chart rendering error:', e.message, e.stack);
-                        setChartError('Failed to render chart. Please try a different date range or song selection.');
+                        setChartError('Failed to render chart. Please try again.');
                     }
-                }, [compareSongs, dateRange, customStartDate, customEndDate]);
+                }, [compareItems, dateRange, customStartDate, customEndDate, historyData, isAlbum]);
 
                 const getDateRangeText = () => {
-                    if (!compareSongs.length || compareSongs.some(key => !historyData[key] || !historyData[key].length)) 
+                    if (!compareItems.length || compareItems.some(key => !historyData[key] || !historyData[key].length)) 
                         return 'No data available';
-                    
+
                     let minDate = null;
                     let maxDate = null;
-                    compareSongs.forEach(key => {
+                    compareItems.forEach(key => {
                         const history = historyData[key];
-                        if (history && history.length) {
+                        if (history?.length) {
                             const firstDate = new Date(history[0].date);
                             const lastDate = new Date(history[history.length - 1].date);
                             minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
@@ -611,8 +621,10 @@
                         }
                     });
 
+                    if (!minDate || !maxDate) return 'No data available';
+
                     let startDate, endDate;
-                    const histories = compareSongs.map(key => historyData[key]).filter(Boolean);
+                    const histories = compareItems.map(key => historyData[key]).filter(Boolean);
                     if (dateRange === 'custom' && customStartDate && customEndDate && 
                         validateDates(customStartDate, customEndDate, histories)) {
                         startDate = new Date(customStartDate);
@@ -622,7 +634,7 @@
                         if (dateRange === 'all') {
                             startDate = minDate;
                         } else {
-                            const days = parseInt(dateRange);
+                            const days = parseInt(dateRange) || 7;
                             startDate = new Date(endDate);
                             startDate.setDate(endDate.getDate() - days + 1);
                         }
@@ -630,12 +642,6 @@
 
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
-
-                const filteredSongs = songsData.filter(song => 
-                    (song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
-                    song.album.toLowerCase().includes(searchCompare.toLowerCase())) &&
-                    !compareSongs.includes(song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`)
-                );
 
                 return (
                     <div className="modal-overlay" onClick={onClose}>
@@ -645,12 +651,12 @@
                             </button>
                             <div className="mb-4">
                                 <h2 className="text-lg font-bold text-white sm:text-xl">
-                                    Compare Songs
+                                    Compare {isAlbum ? 'Albums' : 'Songs'}
                                 </h2>
                                 <div className="mt-2 relative">
                                     <input
                                         type="text"
-                                        placeholder="Search songs to compare..."
+                                        placeholder={`Search ${isAlbum ? 'albums' : 'songs'} to compare...`}
                                         className="w-full px-4 py-2 text-sm rounded-lg border border-white/20 bg-black text-white placeholder-white/40 focus:outline-none focus:border-white/40 mb-2"
                                         value={searchCompare}
                                         onChange={(e) => {
@@ -660,44 +666,44 @@
                                         onFocus={() => setShowSuggestions(searchCompare.length > 0)}
                                         onBlur={() => setTimeout(() => setShowSuggestions(false), 200)}
                                     />
-                                    {showSuggestions && filteredSongs.length > 0 && (
+                                    {showSuggestions && filteredItems.length > 0 && (
                                         <div className="autocomplete-suggestions">
-                                            {filteredSongs.map(song => {
-                                                const key = song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`;
+                                            {filteredItems.map(item => {
+                                                const key = isAlbum ? item.title : (item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`);
                                                 return (
                                                     <div
                                                         key={key}
                                                         className="suggestion-item text-sm"
-                                                        onClick={() => handleSongSelect(key)}
+                                                        onClick={() => handleItemSelect(key)}
                                                     >
-                                                        {song.title} ({song.album})
+                                                        {isAlbum ? item.title : `${item.title} (${item.album})`}
                                                     </div>
                                                 );
                                             })}
                                         </div>
                                     )}
                                     <div className="flex flex-wrap gap-2 mt-2">
-                                        {compareSongs.map(key => {
-                                            const [title, album] = key.split('|');
-                                            return (
-                                                <div
-                                                    key={key}
-                                                    className="flex items-center px-3 py-1 text-sm bg-white/20 text-white rounded-full"
+                                        {compareItems.map(key => (
+                                            <div
+                                                key={key}
+                                                className="flex items-center px-3 py-1 text-sm bg-white/20 text-white rounded-full"
+                                            >
+                                                {isAlbum ? key : (() => {
+                                                    const [title, album] = key.split('|');
+                                                    return `${title} (${album})`;
+                                                })()}
+                                                <button
+                                                    className="ml-2 text-white/60 hover:text-white"
+                                                    onClick={() => handleItemRemove(key)}
                                                 >
-                                                    {title} ({album})
-                                                    <button
-                                                        className="ml-2 text-white/60 hover:text-white"
-                                                        onClick={() => handleSongRemove(key)}
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
                                     </div>
-                                    {compareSongs.length >= 5 && (
+                                    {compareItems.length >= 5 && (
                                         <p className="text-sm text-yellow-500 mt-2">
-                                            Maximum 5 songs can be compared at once
+                                            Maximum 5 {isAlbum ? 'albums' : 'songs'} can be compared
                                         </p>
                                     )}
                                 </div>
@@ -706,58 +712,22 @@
                                         <p className="text-sm text-white/60">{getDateRangeText()}</p>
                                     </div>
                                     <div className="flex gap-2 flex-wrap">
-                                        <button
-                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '7' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                            onClick={() => {
-                                                setDateRange('7');
-                                                setShowCustomPicker(false);
-                                                setCustomStartDate('');
-                                                setCustomEndDate('');
-                                                setTempStartDate('');
-                                                setTempEndDate('');
-                                            }}
-                                        >
-                                            Last 7 days
-                                        </button>
-                                        <button
-                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '28' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                            onClick={() => {
-                                                setDateRange('28');
-                                                setShowCustomPicker(false);
-                                                setCustomStartDate('');
-                                                setCustomEndDate('');
-                                                setTempStartDate('');
-                                                setTempEndDate('');
-                                            }}
-                                        >
-                                            Last 28 days
-                                        </button>
-                                        <button
-                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === '90' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                            onClick={() => {
-                                                setDateRange('90');
-                                                setShowCustomPicker(false);
-                                                setCustomStartDate('');
-                                                setCustomEndDate('');
-                                                setTempStartDate('');
-                                                setTempEndDate('');
-                                            }}
-                                        >
-                                            Last 90 days
-                                        </button>
-                                        <button
-                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'all' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                            onClick={() => {
-                                                setDateRange('all');
-                                                setShowCustomPicker(false);
-                                                setCustomStartDate('');
-                                                setCustomEndDate('');
-                                                setTempStartDate('');
-                                                setTempEndDate('');
-                                            }}
-                                        >
-                                            All
-                                        </button>
+                                        {['7', '28', '90', 'all'].map(range => (
+                                            <button
+                                                key={range}
+                                                className={`px-3 py-1 text-sm rounded-full border ${dateRange === range ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                                onClick={() => {
+                                                    setDateRange(range);
+                                                    setShowCustomPicker(false);
+                                                    setCustomStartDate('');
+                                                    setCustomEndDate('');
+                                                    setTempStartDate('');
+                                                    setTempEndDate('');
+                                                }}
+                                            >
+                                                {range === 'all' ? 'All' : `Last ${range} days`}
+                                            </button>
+                                        ))}
                                         <button
                                             className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
                                             onClick={() => {
@@ -838,13 +808,11 @@
                     if (sortConfig.key === 'title' || sortConfig.key === 'album') {
                         const aValue = a[sortConfig.key] || '';
                         const bValue = b[sortConfig.key] || '';
-                        
                         if (sortConfig.direction === 'asc') {
                             return aValue.localeCompare(bValue);
                         }
                         return bValue.localeCompare(aValue);
                     }
-                    
                     if (sortConfig.direction === 'asc') {
                         return a[sortConfig.key] - b[sortConfig.key];
                     }
@@ -867,6 +835,13 @@
                     return sortConfig.direction === 'asc' ? ' ↑' : ' ↓';
                 }
                 return '';
+            };
+
+            const handleItemClick = (item) => {
+                const key = activeTab === 'songs' 
+                    ? (item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`)
+                    : item.title;
+                setSelectedItems(prev => prev.includes(key) ? prev : [...prev, key]);
             };
 
             return (
@@ -925,7 +900,7 @@
                                             }`}
                                             onClick={() => {
                                                 setActiveTab('songs');
-                                                setSelectedSongs([]);
+                                                setSelectedItems([]);
                                             }}
                                         >
                                             Songs
@@ -938,7 +913,7 @@
                                             }`}
                                             onClick={() => {
                                                 setActiveTab('albums');
-                                                setSelectedSongs([]);
+                                                setSelectedItems([]);
                                             }}
                                         >
                                             Albums
@@ -994,15 +969,8 @@
                                             {filteredData[activeTab].map((item, index) => (
                                                 <tr 
                                                     key={item.title + index} 
-                                                    className={`${index % 2 === 0 ? 'bg-black' : 'bg-white/5'} ${activeTab === 'songs' ? 'cursor-pointer hover:bg-white/10' : ''}`}
-                                                    onClick={() => {
-                                                        if (activeTab === 'songs') {
-                                                            const key = item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`;
-                                                            setSelectedSongs(prev => 
-                                                                prev.includes(key) ? prev : [...prev, key]
-                                                            );
-                                                        }
-                                                    }}
+                                                    className={`${index % 2 === 0 ? 'bg-black' : 'bg-white/5'} cursor-pointer hover:bg-white/10`}
+                                                    onClick={() => handleItemClick(item)}
                                                 >
                                                     <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{index + 1}</td>
                                                     <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">{item.title}</td>
@@ -1020,11 +988,13 @@
                                     </table>
                                 </div>
 
-                                {activeTab === 'songs' && selectedSongs.length > 0 && (
-                                    <SongChart 
-                                        songKeys={selectedSongs} 
-                                        songsData={songs}
-                                        onClose={() => setSelectedSongs([])}
+                                {selectedItems.length > 0 && (
+                                    <ComparisonChart 
+                                        itemKeys={selectedItems} 
+                                        itemsData={activeTab === 'songs' ? songs : albums}
+                                        historyData={activeTab === 'songs' ? historyData : albumHistoryData}
+                                        isAlbum={activeTab === 'albums'}
+                                        onClose={() => setSelectedItems([])}
                                     />
                                 )}
                             </>
@@ -1039,7 +1009,7 @@
                 const root = ReactDOM.createRoot(document.getElementById('root'));
                 root.render(<YeatStats />);
             } else {
-                console.error('ReactDOM or React is not loaded. Please check the script tags.');
+                console.error('ReactDOM or React is not loaded.');
             }
         };
     </script>
