@@ -179,7 +179,7 @@
 
                 const soloTracks = leadTracks.filter(song => !song.title.toLowerCase().includes("feat."));
                 const soloStreams = soloTracks.reduce((sum, song) => sum + song.streams, 0);
-                const soloDaily = soloTracks.reduce((sum, song) => sum + song.daily, 0); // Fixed typo: "sant daily" to "song.daily"
+                const soloDaily = soloTracks.reduce((sum, song) => sum + song.daily, 0);
                 const soloCount = soloTracks.length;
 
                 setStatsData({
@@ -215,27 +215,37 @@
             const SongChart = ({ songTitle }) => {
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
-                const [dateRange, setDateRange] = React.useState('all'); // State for date range filter
+                const [dateRange, setDateRange] = React.useState('all');
+                const [customStartDate, setCustomStartDate] = React.useState(null);
+                const [customEndDate, setCustomEndDate] = React.useState(null);
+                const [showCustomPicker, setShowCustomPicker] = React.useState(false);
 
                 React.useEffect(() => {
                     if (!songTitle || !historyData[songTitle]) return;
 
                     // Filter data based on selected date range
                     let history = historyData[songTitle];
-                    const endDate = new Date(history[history.length - 1].date);
-                    let startDate;
+                    let startDate, endDate;
 
-                    if (dateRange !== 'all') {
-                        const days = parseInt(dateRange);
-                        startDate = new Date(endDate);
-                        startDate.setDate(endDate.getDate() - days);
-                        history = history.filter(entry => {
-                            const entryDate = new Date(entry.date);
-                            return entryDate >= startDate && entryDate <= endDate;
-                        });
+                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                        startDate = new Date(customStartDate);
+                        endDate = new Date(customEndDate);
+                    } else {
+                        endDate = new Date(history[history.length - 1].date);
+                        if (dateRange === 'all') {
+                            startDate = new Date(history[0].date);
+                        } else {
+                            const days = parseInt(dateRange);
+                            startDate = new Date(endDate);
+                            startDate.setDate(endDate.getDate() - days);
+                        }
                     }
 
-                    // If no data after filtering, return early
+                    history = history.filter(entry => {
+                        const entryDate = new Date(entry.date);
+                        return entryDate >= startDate && entryDate <= endDate;
+                    });
+
                     if (history.length === 0) return;
 
                     const labels = history.map(entry => {
@@ -243,6 +253,7 @@
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     });
                     const dailyData = history.map(entry => entry.daily);
+                    const totalStreamsData = history.map(entry => entry.streams);
 
                     const ctx = canvasRef.current.getContext('2d');
 
@@ -258,11 +269,11 @@
                                 {
                                     label: 'Daily Streams',
                                     data: dailyData,
-                                    borderColor: '#3B82F6', // Blue line
-                                    backgroundColor: 'rgba(59, 130, 246, 0.2)', // Semi-transparent blue fill
-                                    fill: true, // Enable area fill
-                                    tension: 0.3, // Smooth the line
-                                    pointRadius: 0, // Hide points
+                                    borderColor: '#60A5FA', // Lighter blue for dark mode
+                                    backgroundColor: 'rgba(96, 165, 250, 0.2)', // Semi-transparent fill
+                                    fill: true,
+                                    tension: 0.3,
+                                    pointRadius: 0,
                                     borderWidth: 2
                                 }
                             ]
@@ -273,13 +284,13 @@
                             scales: {
                                 x: {
                                     ticks: {
-                                        color: '#000000',
+                                        color: '#ffffff',
                                         font: {
                                             size: 12
                                         }
                                     },
                                     grid: {
-                                        display: false
+                                        color: 'rgba(255, 255, 255, 0.1)'
                                     }
                                 },
                                 y: {
@@ -287,35 +298,38 @@
                                         display: false
                                     },
                                     ticks: {
-                                        color: '#000000',
+                                        color: '#ffffff',
                                         font: {
                                             size: 12
                                         },
                                         callback: (value) => value.toLocaleString()
                                     },
                                     grid: {
-                                        display: false
+                                        color: 'rgba(255, 255, 255, 0.1)'
                                     },
                                     beginAtZero: true
                                 }
                             },
                             plugins: {
                                 legend: {
-                                    display: false // Hide legend
+                                    display: false
                                 },
                                 title: {
-                                    display: false // Hide title
+                                    display: false
                                 },
                                 tooltip: {
                                     enabled: true,
-                                    backgroundColor: '#ffffff',
-                                    titleColor: '#000000',
-                                    bodyColor: '#000000',
-                                    borderColor: '#e5e7eb',
+                                    backgroundColor: '#1f2937',
+                                    titleColor: '#ffffff',
+                                    bodyColor: '#ffffff',
+                                    borderColor: '#4b5563',
                                     borderWidth: 1,
                                     cornerRadius: 4,
                                     callbacks: {
-                                        label: (context) => context.parsed.y.toLocaleString(),
+                                        label: (context) => [
+                                            `Daily: ${context.parsed.y.toLocaleString()}`,
+                                            `Total: ${totalStreamsData[context.dataIndex].toLocaleString()}`
+                                        ],
                                         title: (tooltipItems) => tooltipItems[0].label
                                     }
                                 }
@@ -333,69 +347,179 @@
                             chartRef.current.destroy();
                         }
                     };
-                }, [songTitle, dateRange]);
+                }, [songTitle, dateRange, customStartDate, customEndDate]);
 
                 // Calculate date range for display
                 const getDateRangeText = () => {
                     if (!historyData[songTitle]) return '';
                     let history = historyData[songTitle];
-                    const endDate = new Date(history[history.length - 1].date);
-                    let startDate;
+                    let startDate, endDate;
 
-                    if (dateRange === 'all') {
-                        startDate = new Date(history[0].date);
+                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                        startDate = new Date(customStartDate);
+                        endDate = new Date(customEndDate);
                     } else {
-                        const days = parseInt(dateRange);
-                        startDate = new Date(endDate);
-                        startDate.setDate(endDate.getDate() - days);
-                        // Ensure startDate doesn't go before the earliest data
-                        const earliestDate = new Date(history[0].date);
-                        if (startDate < earliestDate) {
-                            startDate = earliestDate;
+                        endDate = new Date(history[history.length - 1].date);
+                        if (dateRange === 'all') {
+                            startDate = new Date(history[0].date);
+                        } else {
+                            const days = parseInt(dateRange);
+                            startDate = new Date(endDate);
+                            startDate.setDate(endDate.getDate() - days);
                         }
+                    }
+
+                    // Ensure startDate doesn't go before the earliest data
+                    const earliestDate = new Date(history[0].date);
+                    if (startDate < earliestDate) {
+                        startDate = earliestDate;
                     }
 
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
                 };
 
+                // Get current total streams (latest date)
+                const getCurrentTotalStreams = () => {
+                    if (!historyData[songTitle]) return 0;
+                    const history = historyData[songTitle];
+                    return history[history.length - 1].streams;
+                };
+
+                // Calculate percentage change in daily streams
+                const getPercentageChange = () => {
+                    if (!historyData[songTitle]) return { percentage: 0, isIncrease: true };
+                    let history = historyData[songTitle];
+                    let startDate, endDate;
+
+                    if (dateRange === 'custom' && customStartDate && customEndDate) {
+                        startDate = new Date(customStartDate);
+                        endDate = new Date(customEndDate);
+                    } else {
+                        endDate = new Date(history[history.length - 1].date);
+                        if (dateRange === 'all') {
+                            startDate = new Date(history[0].date);
+                        } else {
+                            const days = parseInt(dateRange);
+                            startDate = new Date(endDate);
+                            startDate.setDate(endDate.getDate() - days);
+                        }
+                    }
+
+                    history = history.filter(entry => {
+                        const entryDate = new Date(entry.date);
+                        return entryDate >= startDate && entryDate <= endDate;
+                    });
+
+                    if (history.length < 2) return { percentage: 0, isIncrease: true };
+
+                    const firstDaily = history[0].daily;
+                    const lastDaily = history[history.length - 1].daily;
+                    const percentage = ((lastDaily - firstDaily) / firstDaily * 100).toFixed(2);
+                    const isIncrease = lastDaily >= firstDaily;
+
+                    return { percentage: Math.abs(percentage), isIncrease };
+                };
+
+                const { percentage, isIncrease } = getPercentageChange();
+
                 return (
-                    <div className="mt-6 p-4 bg-white rounded-lg">
-                        <div className="flex justify-between items-center mb-4">
-                            <div>
-                                <p className="text-sm text-gray-600">{getDateRangeText()}</p>
+                    <div className="mt-6 p-4 bg-black border border-white/20 rounded-lg">
+                        <div className="mb-4">
+                            <h2 className="text-lg font-bold text-white">
+                                {songTitle} • {getCurrentTotalStreams().toLocaleString()} Total Streams
+                            </h2>
+                            <div className="flex justify-between items-center mt-2">
+                                <div>
+                                    <p className="text-sm text-white/60">{getDateRangeText()}</p>
+                                    {dateRange !== 'all' && (
+                                        <p className="text-sm mt-1">
+                                            <span className="text-white/60">Percentage Change: </span>
+                                            <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
+                                                {isIncrease ? '+' : '-'}{percentage}%
+                                            </span>
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 flex-wrap">
+                                    <button
+                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '7' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                        onClick={() => {
+                                            setDateRange('7');
+                                            setShowCustomPicker(false);
+                                        }}
+                                    >
+                                        Last 7 days
+                                    </button>
+                                    <button
+                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '28' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                        onClick={() => {
+                                            setDateRange('28');
+                                            setShowCustomPicker(false);
+                                        }}
+                                    >
+                                        Last 28 days
+                                    </button>
+                                    <button
+                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === '90' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                        onClick={() => {
+                                            setDateRange('90');
+                                            setShowCustomPicker(false);
+                                        }}
+                                    >
+                                        Last 90 days
+                                    </button>
+                                    <button
+                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'all' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                        onClick={() => {
+                                            setDateRange('all');
+                                            setShowCustomPicker(false);
+                                        }}
+                                    >
+                                        All
+                                    </button>
+                                    <button
+                                        className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                        onClick={() => {
+                                            setDateRange('custom');
+                                            setShowCustomPicker(true);
+                                        }}
+                                    >
+                                        Custom
+                                    </button>
+                                    <button
+                                        className="px-4 py-2 text-sm font-medium text-white bg-black border border-white/20 rounded-lg hover:bg-white/10"
+                                        onClick={() => setSelectedSong(null)}
+                                    >
+                                        Close
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex gap-2">
-                                <button
-                                    className={`px-3 py-1 text-sm rounded-full border ${dateRange === '7' ? 'bg-gray-200 border-gray-400' : 'border-gray-300'} text-gray-800 hover:bg-gray-100`}
-                                    onClick={() => setDateRange('7')}
-                                >
-                                    Last 7 days
-                                </button>
-                                <button
-                                    className={`px-3 py-1 text-sm rounded-full border ${dateRange === '28' ? 'bg-gray-200 border-gray-400' : 'border-gray-300'} text-gray-800 hover:bg-gray-100`}
-                                    onClick={() => setDateRange('28')}
-                                >
-                                    Last 28 days
-                                </button>
-                                <button
-                                    className={`px-3 py-1 text-sm rounded-full border ${dateRange === '90' ? 'bg-gray-200 border-gray-400' : 'border-gray-300'} text-gray-800 hover:bg-gray-100`}
-                                    onClick={() => setDateRange('90')}
-                                >
-                                    Last 90 days
-                                </button>
-                                <button
-                                    className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'all' ? 'bg-gray-200 border-gray-400' : 'border-gray-300'} text-gray-800 hover:bg-gray-100`}
-                                    onClick={() => setDateRange('all')}
-                                >
-                                    All
-                                </button>
-                                <button
-                                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
-                                    onClick={() => setSelectedSong(null)}
-                                >
-                                    Close
-                                </button>
-                            </div>
+                            {showCustomPicker && dateRange === 'custom' && (
+                                <div className="mt-4 flex gap-4">
+                                    <div>
+                                        <label className="text-sm text-white/60">Start Date:</label>
+                                        <input
+                                            type="date"
+                                            className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40"
+                                            value={customStartDate || ''}
+                                            onChange={(e) => setCustomStartDate(e.target.value)}
+                                            min={historyData[songTitle] ? historyData[songTitle][0].date : ''}
+                                            max={customEndDate || historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-sm text-white/60">End Date:</label>
+                                        <input
+                                            type="date"
+                                            className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40"
+                                            value={customEndDate || ''}
+                                            onChange={(e) => setCustomEndDate(e.target.value)}
+                                            min={customStartDate || historyData[songTitle] ? historyData[songTitle][0].date : ''}
+                                            max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         <div className="h-64">
                             <canvas ref={canvasRef}></canvas>
