@@ -81,7 +81,7 @@
             const [selectedSong, setSelectedSong] = React.useState(null);
             const [latestDate, setLatestDate] = React.useState(null);
             const [statsData, setStatsData] = React.useState({
-                headers: ['Total', 'As lead', 'Solo', 'As feature (*)'],
+                headers: ['Total', 'Lead', 'Solo', 'Features'],
                 rows: [
                     { label: 'Streams', values: [0, 0, 0, 0] },
                     { label: 'Daily', values: [0, 0, 0, 0] },
@@ -118,7 +118,7 @@
                     let fileCount = 0;
                     const processedDates = [];
 
-                    const startDate = new Date('2024-01-01');
+                    const startDate = new Date('2025-01-01');
                     const endDate = new Date();
                     const today = new Date();
 
@@ -350,42 +350,9 @@
                     }
 
                     try {
-                        let history = [];
-                        if (title.toLowerCase() === 'already rich') {
-                            // Combine daily streams for all "Already Rich" entries
-                            const allAlreadyRichKeys = Object.keys(historyData).filter(key => 
-                                key.toLowerCase().startsWith('already rich')
-                            );
-
-                            // Create a map of dates to aggregated data
-                            const dateMap = {};
-                            allAlreadyRichKeys.forEach(key => {
-                                historyData[key].forEach(entry => {
-                                    if (!dateMap[entry.date]) {
-                                        dateMap[entry.date] = {
-                                            date: entry.date,
-                                            streams: 0,
-                                            daily: 0,
-                                            album: 'Combined'
-                                        };
-                                    }
-                                    dateMap[entry.date].streams += entry.streams;
-                                    dateMap[entry.date].daily += entry.daily;
-                                });
-                            });
-
-                            // Convert the map back to an array and sort by date
-                            history = Object.values(dateMap).sort((a, b) => new Date(a.date) - new Date(b.date));
-                        } else {
-                            history = historyData[historyKey];
-                        }
-
-                        if (!history || history.length === 0) {
-                            setChartError('No data available after combining entries.');
-                            return;
-                        }
-
+                        let history = historyData[historyKey];
                         let startDate, endDate;
+
                         if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
                             startDate = new Date(customStartDate);
                             endDate = new Date(customEndDate);
@@ -607,7 +574,7 @@
                                         <p className="text-sm text-white/60">{getDateRangeText()}</p>
                                         {dateRange !== 'all' && (
                                             <p className="text-sm mt-1">
-                                                <span className="text-white/60">Percentage Change: </span>
+                                                <span className="text-white/60">Change: </span>
                                                 <span className={isIncrease ? 'text-green-500' : 'text-red-500'}>
                                                     {isIncrease ? '+' : '-'}{percentage}%
                                                 </span>
@@ -788,7 +755,7 @@
                         <div className="mb-4 sm:mb-8">
                             <h1 className="text-xl sm:text-2xl font-bold mb-2 text-white">Yeat Spotify Stats</h1>
                             <p className="text-xs sm:text-sm text-white/60">
-                                Showing data from: {formatDate(latestDate)}
+                                Last updated: {formatDate(latestDate)}
                             </p>
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
