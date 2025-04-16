@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <!-- Prevent caching -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -46,7 +45,7 @@
             border-radius: 0.5rem;
             width: 90%;
             max-width: 800px;
-            max-height: 90vh;
+            max-height: 80vh;
             overflow-y: auto;
             padding: 1.5rem;
             position: relative;
@@ -289,9 +288,29 @@
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
                 const [dateRange, setDateRange] = React.useState('all');
-                const [customStartDate, setCustomStartDate] = React.useState(null);
-                const [customEndDate, setCustomEndDate] = React.useState(null);
+                const [customStartDate, setCustomStartDate] = React.useState('');
+                const [customEndDate, setCustomEndDate] = React.useState('');
+                const [tempStartDate, setTempStartDate] = React.useState('');
+                const [tempEndDate, setTempEndDate] = React.useState('');
                 const [showCustomPicker, setShowCustomPicker] = React.useState(false);
+
+                const validateDates = (start, end) => {
+                    if (!start || !end) return false;
+                    const startDate = new Date(start);
+                    const endDate = new Date(end);
+                    const minDate = historyData[songTitle] ? new Date(historyData[songTitle][0].date) : new Date();
+                    const maxDate = historyData[songTitle] ? new Date(historyData[songTitle][historyData[songTitle].length - 1].date) : new Date();
+                    return startDate <= endDate && startDate >= minDate && endDate <= maxDate;
+                };
+
+                const handleApplyCustomDates = () => {
+                    if (validateDates(tempStartDate, tempEndDate)) {
+                        setCustomStartDate(tempStartDate);
+                        setCustomEndDate(tempEndDate);
+                    } else {
+                        alert('Invalid date range. Ensure start date is before end date and within available data.');
+                    }
+                };
 
                 React.useEffect(() => {
                     if (!songTitle || !historyData[songTitle]) {
@@ -535,6 +554,8 @@
                                             onClick={() => {
                                                 setDateRange('7');
                                                 setShowCustomPicker(false);
+                                                setCustomStartDate('');
+                                                setCustomEndDate('');
                                             }}
                                         >
                                             Last 7 days
@@ -544,6 +565,8 @@
                                             onClick={() => {
                                                 setDateRange('28');
                                                 setShowCustomPicker(false);
+                                                setCustomStartDate('');
+                                                setCustomEndDate('');
                                             }}
                                         >
                                             Last 28 days
@@ -553,6 +576,8 @@
                                             onClick={() => {
                                                 setDateRange('90');
                                                 setShowCustomPicker(false);
+                                                setCustomStartDate('');
+                                                setCustomEndDate('');
                                             }}
                                         >
                                             Last 90 days
@@ -562,6 +587,8 @@
                                             onClick={() => {
                                                 setDateRange('all');
                                                 setShowCustomPicker(false);
+                                                setCustomStartDate('');
+                                                setCustomEndDate('');
                                             }}
                                         >
                                             All
@@ -578,33 +605,39 @@
                                     </div>
                                 </div>
                                 {showCustomPicker && dateRange === 'custom' && (
-                                    <div className="mt-4 flex flex-col sm:flex-row gap-4">
-                                        <div>
+                                    <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                                        <div className="flex flex-col w-full sm:w-auto">
                                             <label className="text-sm text-white/60">Start Date:</label>
                                             <input
                                                 type="date"
-                                                className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full sm:w-auto"
-                                                value={customStartDate || ''}
-                                                onChange={(e) => setCustomStartDate(e.target.value)}
+                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
+                                                value={tempStartDate}
+                                                onChange={(e) => setTempStartDate(e.target.value)}
                                                 min={historyData[songTitle] ? historyData[songTitle][0].date : ''}
-                                                max={customEndDate || historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="text-sm text-white/60">End Date:</label>
-                                            <input
-                                                type="date"
-                                                className="ml-2 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full sm:w-auto"
-                                                value={customEndDate || ''}
-                                                onChange={(e) => setCustomEndDate(e.target.value)}
-                                                min={customStartDate || historyData[songTitle] ? historyData[songTitle][0].date : ''}
                                                 max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
                                             />
                                         </div>
+                                        <div className="flex flex-col w-full sm:w-auto">
+                                            <label className="text-sm text-white/60">End Date:</label>
+                                            <input
+                                                type="date"
+                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
+                                                value={tempEndDate}
+                                                onChange={(e) => setTempEndDate(e.target.value)}
+                                                min={tempStartDate || (historyData[songTitle] ? historyData[songTitle][0].date : '')}
+                                                max={historyData[songTitle] ? historyData[songTitle][historyData[songTitle].length - 1].date : ''}
+                                            />
+                                        </div>
+                                        <button
+                                            className="px-4 py-1 text-sm rounded-lg border border-white/20 bg-black text-white hover:bg-white/10 mt-4 sm:mt-0 sm:ml-2"
+                                            onClick={handleApplyCustomDates}
+                                        >
+                                            Apply
+                                        </button>
                                     </div>
                                 )}
                             </div>
-                            <div className="chart-container h-[50vh] sm:h-[60vh]">
+                            <div className="chart-container h-[40vh] sm:h-[45vh]">
                                 <canvas ref={canvasRef}></canvas>
                             </div>
                         </div>
