@@ -279,9 +279,9 @@
                         startDate = new Date(customStartDate);
                         endDate = new Date(customEndDate);
                     } else {
-                        endDate = new Date(history[history.length - 1].date);
+                        endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
                         if (dateRange === 'all') {
-                            startDate = new Date(history[0].date);
+                            startDate = new Date(history[0].date + 'T00:00:00Z');
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
@@ -292,7 +292,7 @@
                     console.log(`Filtering history for ${songTitle} between ${startDate.toISOString().split('T')[0]} and ${endDate.toISOString().split('T')[0]}`);
 
                     history = history.filter(entry => {
-                        const entryDate = new Date(entry.date);
+                        const entryDate = new Date(entry.date + 'T00:00:00Z');
                         return entryDate >= startDate && entryDate <= endDate;
                     });
 
@@ -301,8 +301,13 @@
                         return;
                     }
 
+                    // Log filtered history dates
+                    const filteredDates = history.map(entry => entry.date);
+                    console.log(`Filtered dates for ${songTitle}: ${filteredDates.join(', ')}`);
+
                     const labels = history.map(entry => {
-                        const date = new Date(entry.date);
+                        const date = new Date(entry.date + 'T00:00:00Z');
+                        console.log(`Raw date for ${entry.date}: ${date.toISOString()}`);
                         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                     });
                     const dailyData = history.map(entry => entry.daily);
@@ -413,12 +418,12 @@
                     let startDate, endDate;
 
                     if (dateRange === 'custom' && customStartDate && customEndDate) {
-                        startDate = new Date(customStartDate);
-                        endDate = new Date(customEndDate);
+                        startDate = new Date(customStartDate + 'T00:00:00Z');
+                        endDate = new Date(customEndDate + 'T00:00:00Z');
                     } else {
-                        endDate = new Date(history[history.length - 1].date);
+                        endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
                         if (dateRange === 'all') {
-                            startDate = new Date(history[0].date);
+                            startDate = new Date(history[0].date + 'T00:00:00Z');
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
@@ -443,12 +448,12 @@
                     let startDate, endDate;
 
                     if (dateRange === 'custom' && customStartDate && customEndDate) {
-                        startDate = new Date(customStartDate);
-                        endDate = new Date(customEndDate);
+                        startDate = new Date(customStartDate + 'T00:00:00Z');
+                        endDate = new Date(customEndDate + 'T00:00:00Z');
                     } else {
-                        endDate = new Date(history[history.length - 1].date);
+                        endDate = new Date(history[history.length - 1].date + 'T00:00:00Z');
                         if (dateRange === 'all') {
-                            startDate = new Date(history[0].date);
+                            startDate = new Date(history[0].date + 'T00:00:00Z');
                         } else {
                             const days = parseInt(dateRange);
                             startDate = new Date(endDate);
@@ -457,7 +462,7 @@
                     }
 
                     history = history.filter(entry => {
-                        const entryDate = new Date(entry.date);
+                        const entryDate = new Date(entry.date + 'T00:00:00Z');
                         return entryDate >= startDate && entryDate <= endDate;
                     });
 
