@@ -350,9 +350,42 @@
                     }
 
                     try {
-                        let history = historyData[historyKey];
-                        let startDate, endDate;
+                        let history = [];
+                        if (title.toLowerCase() === 'already rich') {
+                            // Combine daily streams for all "Already Rich" entries
+                            const allAlreadyRichKeys = Object.keys(historyData).filter(key => 
+                                key.toLowerCase().startsWith('already rich')
+                            );
 
+                            // Create a map of dates to aggregated data
+                            const dateMap = {};
+                            allAlreadyRichKeys.forEach(key => {
+                                historyData[key].forEach(entry => {
+                                    if (!dateMap[entry.date]) {
+                                        dateMap[entry.date] = {
+                                            date: entry.date,
+                                            streams: 0,
+                                            daily: 0,
+                                            album: 'Combined'
+                                        };
+                                    }
+                                    dateMap[entry.date].streams += entry.streams;
+                                    dateMap[entry.date].daily += entry.daily;
+                                });
+                            });
+
+                            // Convert the map back to an array and sort by date
+                            history = Object.values(dateMap).sort((a, b) => new Date(a.date) - new Date(b.date));
+                        } else {
+                            history = historyData[historyKey];
+                        }
+
+                        if (!history || history.length === 0) {
+                            setChartError('No data available after combining entries.');
+                            return;
+                        }
+
+                        let startDate, endDate;
                         if (dateRange === 'custom' && customStartDate && customEndDate && validateDates(customStartDate, customEndDate)) {
                             startDate = new Date(customStartDate);
                             endDate = new Date(customEndDate);
