@@ -69,6 +69,7 @@
                     const dates = [];
                     let latestDate = null;
                     let latestResponse = null;
+                    const history = {};
 
                     // Check for available CSV files starting from startDate
                     let currentDate = new Date(startDate);
@@ -109,7 +110,7 @@
                                     latestResponse = { ok: true, text: () => Promise.resolve(text) };
                                 }
                             } else {
-                                // If a date fails to load, break the loop
+                                console.warn(`CSV file for ${dateStr} not found (status: ${response.status})`);
                                 break;
                             }
                         } catch (err) {
@@ -120,43 +121,7 @@
                     }
 
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible.');
-                    }
-
-                    const history = {};
-                    for (const date of dates) {
-                        try {
-                            const response = await fetch(`./${date}.csv`);
-                            if (response.ok) {
-                                const text = await response.text();
-                                const parsedData = await new Promise((resolve, reject) => {
-                                    Papa.parse(text, {
-                                        header: true,
-                                        skipEmptyLines: true,
-                                        transformHeader: header => header.trim(),
-                                        complete: (results) => resolve(results.data),
-                                        error: (err) => reject(err)
-                                    });
-                                });
-
-                                parsedData.forEach(row => {
-                                    const title = row.Song || '';
-                                    if (title) {
-                                        if (!history[title]) {
-                                            history[title] = [];
-                                        }
-                                        history[title].push({
-                                            date,
-                                            streams: parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0,
-                                            daily: parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0,
-                                            album: row.Album || ''
-                                        });
-                                    }
-                                });
-                            }
-                        } catch (err) {
-                            console.warn(`Failed to load ${date}.csv: ${err.message}`);
-                        }
+                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-04-01.csv to 2025-04-14.csv in the root directory.');
                     }
 
                     const latestText = await latestResponse.text();
@@ -363,8 +328,8 @@
                                     borderColor: '#4b5563',
                                     borderWidth: 1,
                                     cornerRadius: 4,
-                                    displayColors: false, // Remove color square
-                                    caretSize: 0, // Remove caret
+                                    displayColors: false,
+                                    caretSize: 0,
                                     callbacks: {
                                         label: (context) => [
                                             `Daily: ${context.parsed.y.toLocaleString()}`,
