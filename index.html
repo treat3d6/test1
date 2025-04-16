@@ -456,7 +456,7 @@
                             }
                         }
 
-                        // Filter dates to only those with data for at least one song
+                        // Filter dates to only those with data for at least one song within the range
                         const dateLabels = Array.from(allDates)
                             .filter(date => {
                                 const d = new Date(date);
@@ -476,14 +476,14 @@
                             const [title, album] = key.split('|');
                             const displayTitle = title.toLowerCase() === 'already rich' ? 'Already Rich' : title;
 
-                            // Only include data for dates in dateLabels
+                            // Only include data for dates where the song has an explicit entry
                             const dailyData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
-                                return entry ? entry.daily : null;
+                                return entry && entry.daily !== null ? entry.daily : null;
                             });
                             const totalStreamsData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
-                                return entry ? entry.streams : null;
+                                return entry && entry.streams !== null ? entry.streams : null;
                             });
 
                             return {
@@ -630,6 +630,12 @@
 
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
+
+                const filteredSongs = songsData.filter(song => 
+                    (song.title.toLowerCase().includes(searchCompare.toLowerCase()) ||
+                    song.album.toLowerCase().includes(searchCompare.toLowerCase())) &&
+                    !compareSongs.includes(song.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${song.title}|${song.album}`)
+                );
 
                 return (
                     <div className="modal-overlay" onClick={onClose}>
