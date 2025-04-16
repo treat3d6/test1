@@ -57,6 +57,8 @@
             ]);
 
             React.useEffect(() => {
+                // Clear historyData to prevent stale data
+                setHistoryData({});
                 loadAllData();
             }, []);
 
@@ -70,11 +72,12 @@
                     let latestDate = null;
                     let latestResponse = null;
                     let fileCount = 0;
+                    const processedDates = [];
 
                     // Start from Jan 1, 2025, as per user's confirmation
                     const startDate = new Date('2025-01-01');
-                    // End at Apr 14, 2025, as per user's latest file
-                    const endDate = new Date('2025-04-14');
+                    // End at the current date (or future) to allow for daily additions
+                    const endDate = new Date(); // Today is April 15, 2025
 
                     // Loop through all dates in the specified range
                     let dateIterator = new Date(startDate);
@@ -113,6 +116,7 @@
                                 });
 
                                 fileCount++;
+                                processedDates.push(dateStr);
                                 if (!earliestDate || dateStr < earliestDate) {
                                     earliestDate = dateStr;
                                 }
@@ -140,7 +144,8 @@
                         console.log(`Song: ${title}, Date range: ${history[title][0].date} to ${history[title][history[title].length - 1].date}`);
                     });
 
-                    console.log(`Processed ${fileCount} CSV files. Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
+                    console.log(`Processed ${fileCount} CSV files. Dates processed: ${processedDates.sort().join(', ')}`);
+                    console.log(`Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
 
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
@@ -311,7 +316,7 @@
                                         }
                                     },
                                     grid: {
-                                        color: 'rgba(255, 255, 251, 0.1)'
+                                        color: 'rgba(255, 255, 255, 0.1)'
                                     }
                                 },
                                 y: {
