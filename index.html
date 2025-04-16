@@ -63,16 +63,19 @@
                     setError(null);
 
                     // Generate list of dates from start of 2025 to today
-                    const startDate = new Date('2025-01-01');
-                    const endDate = new Date();
+                    const startDate = new Date('2025-04-01'); // Start from April 1, 2025, since that's your earliest file
+                    const endDate = new Date(); // Current date: April 15, 2025
                     const dates = [];
                     for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                         const dateStr = d.toISOString().split('T')[0]; // yyyy-mm-dd
                         dates.push(dateStr);
                     }
 
-                    // Fetch all CSV files
+                    // Fetch all CSV files and determine the latest available file
                     const history = {};
+                    let latestDate = null;
+                    let latestResponse = null;
+
                     for (const date of dates) {
                         try {
                             const response = await fetch(`/${date}.csv`);
@@ -102,18 +105,23 @@
                                         });
                                     }
                                 });
+
+                                // Update the latest date and response if this file exists
+                                if (!latestDate || date > latestDate) {
+                                    latestDate = date;
+                                    latestResponse = { ok: true, text: () => Promise.resolve(text) };
+                                }
                             }
                         } catch (err) {
                             console.warn(`Failed to load ${date}.csv: ${err.message}`);
                         }
                     }
 
-                    // Process the latest data for songs and albums (use the most recent date)
-                    const latestDate = dates[dates.length - 1];
-                    const latestResponse = await fetch(`/${latestDate}.csv`);
-                    if (!latestResponse.ok) {
-                        throw new Error(`Failed to load latest CSV file: ${latestResponse.status}`);
+                    // Process the latest data for songs and albums
+                    if (!latestResponse) {
+                        throw new Error('No CSV files found in the repository');
                     }
+
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
                     setHistoryData(history);
