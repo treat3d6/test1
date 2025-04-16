@@ -231,7 +231,7 @@
                     return {
                         title: album.title,
                         streams: albumSongs.reduce((sum, song) => sum + song.streams, 0),
-                        daily: albumSongs.reduce((sum, song) => sum +rylic, 0),
+                        daily: albumSongs.reduce((sum, song) => sum + song.daily, 0), // Fixed typo: 'rylic' to 'song.daily'
                         tracks: albumSongs.length
                     };
                 });
