@@ -79,6 +79,14 @@
         .suggestion-item:hover {
             background: rgba(255, 255, 255, 0.1);
         }
+        .percentage-change {
+            margin-top: 1rem;
+            padding: 0.5rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            color: white;
+            font-size: 0.875rem;
+        }
     </style>
 </head>
 <body class="bg-black">
@@ -420,6 +428,33 @@
                     !compareItems.includes(isAlbum ? item.title : (item.title.toLowerCase() === 'already rich' ? 'Already Rich' : `${item.title}|${item.album}`))
                 );
 
+                const calculatePercentageChange = (history) => {
+                    if (!history || history.length < 2) return [];
+                    const changes = [];
+                    for (let i = 1; i < history.length; i++) {
+                        const current = history[i].daily || 0;
+                        const previous = history[i - 1].daily || 0;
+                        if (previous !== 0) {
+                            const change = ((current - previous) / previous) * 100;
+                            changes.push({
+                                date: history[i].date,
+                                change: change.toFixed(2)
+                            });
+                        } else if (current !== 0) {
+                            changes.push({
+                                date: history[i].date,
+                                change: 'N/A (Previous day was 0)'
+                            });
+                        } else {
+                            changes.push({
+                                date: history[i].date,
+                                change: '0.00'
+                            });
+                        }
+                    }
+                    return changes;
+                };
+
                 React.useEffect(() => {
                     if (!historyData || Object.keys(historyData).length === 0 || !compareItems.length) {
                         setChartError('No data available for comparison.');
@@ -427,7 +462,6 @@
                     }
 
                     try {
-                        // Collect all dates where any compared item has data
                         const allItemDates = new Set();
                         compareItems.forEach(key => {
                             const history = historyData[key] || [];
@@ -484,7 +518,6 @@
                                 return `${title.toLowerCase() === 'already rich' ? 'Already Rich' : title} (${album})`;
                             })();
 
-                            // Only include data for dates where the item has an explicit entry
                             const dailyData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
                                 return entry ? entry.daily : null;
@@ -642,6 +675,9 @@
                     return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
                 };
 
+                const showPercentageChange = compareItems.length === 1 && dateRange !== 'all';
+                const percentageChanges = showPercentageChange ? calculatePercentageChange(historyData[compareItems[0]] || []) : [];
+
                 return (
                     <div className="modal-overlay" onClick={onClose}>
                         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -777,6 +813,18 @@
                             {!chartError && (
                                 <div className="chart-container h-[40vh] sm:h-[45vh]">
                                     <canvas ref={canvasRef}></canvas>
+                                </div>
+                            )}
+                            {showPercentageChange && (
+                                <div className="percentage-change">
+                                    <h3 className="font-bold mb-2">Daily Percentage Change</h3>
+                                    <ul>
+                                        {percentageChanges.map((change, index) => (
+                                            <li key={index}>
+                                                {change.date}: {change.change}%
+                                            </li>
+                                        ))}
+                                    </ul>
                                 </div>
                             )}
                         </div>
