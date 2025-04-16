@@ -71,16 +71,20 @@
                     let latestResponse = null;
                     let fileCount = 0;
 
-                    // Start from an earlier date to capture all possible CSV files
-                    const startDate = new Date('2024-01-01');
-                    const currentDate = new Date(); // Up to today (April 15, 2025)
+                    // Start from Jan 1, 2025, as per user's confirmation
+                    const startDate = new Date('2025-01-01');
+                    // End at Apr 14, 2025, as per user's latest file
+                    const endDate = new Date('2025-04-14');
 
-                    // Loop through all possible dates
+                    // Loop through all dates in the specified range
                     let dateIterator = new Date(startDate);
-                    while (dateIterator <= currentDate) {
+                    while (dateIterator <= endDate) {
                         const dateStr = dateIterator.toISOString().split('T')[0];
                         try {
-                            const response = await fetch(`./${dateStr}.csv`);
+                            // Add cache-busting query parameter to prevent caching
+                            const response = await fetch(`./${dateStr}.csv?t=${Date.now()}`, {
+                                cache: 'no-store' // Prevent caching
+                            });
                             if (response.ok) {
                                 const text = await response.text();
                                 const parsedData = await new Promise((resolve, reject) => {
@@ -126,7 +130,7 @@
                     }
 
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-04-01.csv in the root directory.');
+                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible. Expected files like 2025-01-01.csv to 2025-04-14.csv in the root directory.');
                     }
 
                     // Sort history data for each song by date
@@ -187,7 +191,7 @@
                 const featureDaily = featureTracks.reduce((sum, song) => sum + song.daily, 0);
                 const featureCount = featureTracks.length;
 
-                const leadTracks = processedSongs.filter(song => song.album !== "Features"); // Fixed syntax error: removed extra parenthesis
+                const leadTracks = processedSongs.filter(song => song.album !== "Features");
                 const leadStreams = leadTracks.reduce((sum, song) => sum + song.streams, 0);
                 const leadDaily = leadTracks.reduce((sum, song) => sum + song.daily, 0);
                 const leadCount = leadTracks.length;
