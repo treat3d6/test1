@@ -25,6 +25,13 @@
             }
             .chart-container {
                 height: 40vh !important;
+                position: relative;
+            }
+        }
+        @media (min-width: 641px) {
+            .chart-container {
+                height: 45vh !important;
+                position: relative;
             }
         }
         .modal-overlay {
@@ -80,10 +87,12 @@
             background: rgba(255, 255, 255, 0.1);
         }
         .percentage-change {
-            margin-top: 1rem;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
         }
     </style>
 </head>
@@ -812,14 +821,13 @@
                                 )}
                             </div>
                             {!chartError && (
-                                <div className="chart-container h-[40vh] sm:h-[45vh]">
+                                <div className="chart-container">
                                     <canvas ref={canvasRef}></canvas>
-                                </div>
-                            )}
-                            {showPercentageChange && percentageChange !== null && (
-                                <div className={`percentage-change ${changeColor}`}>
-                                    <h3 className="font-bold mb-2">Overall Percentage Change</h3>
-                                    <p>{percentageChange}%</p>
+                                    {showPercentageChange && percentageChange !== null && (
+                                        <div className={`percentage-change ${changeColor}`}>
+                                            Change: {percentageChange}%
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
