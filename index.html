@@ -78,7 +78,7 @@
 
                     for (const date of dates) {
                         try {
-                            const response = await fetch(`/${date}.csv`);
+                            const response = await fetch(`./${date}.csv`); // Use relative path
                             if (response.ok) {
                                 const text = await response.text();
                                 const parsedData = await new Promise((resolve, reject) => {
@@ -119,7 +119,7 @@
 
                     // Process the latest data for songs and albums
                     if (!latestResponse) {
-                        throw new Error('No CSV files found in the repository');
+                        throw new Error('No CSV files found in the repository. Please check the file paths and ensure the CSV files are accessible.');
                     }
 
                     const latestText = await latestResponse.text();
