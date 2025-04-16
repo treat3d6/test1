@@ -172,9 +172,9 @@
                                 parsedData.forEach(row => {
                                     const title = row.Song || '';
                                     const album = row.Album || '';
-                                    const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
-                                    const total = parseInt((row['Spotify total'] || '0').replace(/,/g, '')) || 0;
-                                    if (title && album) {
+                                    const daily = parseInt((row['Spotify daily'] || '').replace(/,/g, '')) || null;
+                                    const total = parseInt((row['Spotify total'] || '').replace(/,/g, '')) || null;
+                                    if (title && album && daily !== null && total !== null) {
                                         const songKey = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
                                         if (!rawHistory[songKey]) {
                                             rawHistory[songKey] = [];
@@ -421,31 +421,29 @@
                 );
 
                 React.useEffect(() => {
-                    if (!historyData || Object.keys(historyData).length === 0) {
-                        setChartError('No historical data available.');
-                        return;
-                    }
-
-                    if (!compareItems.length || compareItems.some(key => !historyData[key] || !historyData[key].length)) {
-                        setChartError('No data available for selected items.');
+                    if (!historyData || Object.keys(historyData).length === 0 || !compareItems.length) {
+                        setChartError('No data available for comparison.');
                         return;
                     }
 
                     try {
+                        // Collect all dates where any compared item has data
+                        const allItemDates = new Set();
+                        compareItems.forEach(key => {
+                            const history = historyData[key] || [];
+                            history.forEach(entry => allItemDates.add(entry.date));
+                        });
+
                         let minDate = null;
                         let maxDate = null;
-                        const allDates = new Set();
-
                         compareItems.forEach(key => {
-                            const history = historyData[key];
-                            if (!history || !history.length) return;
-
-                            const firstDate = new Date(history[0].date);
-                            const lastDate = new Date(history[history.length - 1].date);
-                            minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
-                            maxDate = maxDate ? new Date(Math.max(maxDate, lastDate)) : lastDate;
-
-                            history.forEach(entry => allDates.add(entry.date));
+                            const history = historyData[key] || [];
+                            if (history.length) {
+                                const firstDate = new Date(history[0].date);
+                                const lastDate = new Date(history[history.length - 1].date);
+                                minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
+                                maxDate = maxDate ? new Date(Math.max(maxDate, lastDate)) : lastDate;
+                            }
                         });
 
                         let startDate, endDate;
@@ -465,7 +463,7 @@
                             }
                         }
 
-                        const dateLabels = Array.from(allDates)
+                        const dateLabels = Array.from(allItemDates)
                             .filter(date => {
                                 const d = new Date(date);
                                 return d >= startDate && d <= endDate;
@@ -486,9 +484,10 @@
                                 return `${title.toLowerCase() === 'already rich' ? 'Already Rich' : title} (${album})`;
                             })();
 
+                            // Only include data for dates where the item has an explicit entry
                             const dailyData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
-                                return entry && entry.daily !== null ? entry.daily : null;
+                                return entry ? entry.daily : null;
                             });
 
                             return {
@@ -543,7 +542,7 @@
                                         ticks: {
                                             color: '#ffffff',
                                             font: { size: 12 },
-                                            callback: (value) => value.toLocaleString()
+                                            callback: (value) => value ? value.toLocaleString() : ''
                                         },
                                         grid: { color: 'rgba(255, 255, 255, 0.1)' },
                                         beginAtZero: true
@@ -612,8 +611,8 @@
                     let minDate = null;
                     let maxDate = null;
                     compareItems.forEach(key => {
-                        const history = historyData[key];
-                        if (history?.length) {
+                        const history = historyData[key] || [];
+                        if (history.length) {
                             const firstDate = new Date(history[0].date);
                             const lastDate = new Date(history[history.length - 1].date);
                             minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
