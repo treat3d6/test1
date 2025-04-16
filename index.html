@@ -351,6 +351,7 @@
                 const [compareItems, setCompareItems] = React.useState(itemKeys);
                 const [searchCompare, setSearchCompare] = React.useState('');
                 const [showSuggestions, setShowSuggestions] = React.useState(false);
+                const [dateLabels, setDateLabels] = React.useState([]);
 
                 const colors = [
                     '#60A5FA', '#F87171', '#34D399', '#FBBF24', '#A78BFA',
@@ -447,6 +448,7 @@
                 React.useEffect(() => {
                     if (!historyData || Object.keys(historyData).length === 0 || !compareItems.length) {
                         setChartError('No data available for comparison.');
+                        setDateLabels([]);
                         return;
                     }
 
@@ -486,14 +488,20 @@
                             }
                         }
 
-                        const dateLabels = Array.from(allItemDates)
+                        const newDateLabels = Array.from(allItemDates)
                             .filter(date => {
                                 const d = new Date(date);
                                 return d >= startDate && d <= endDate;
                             })
                             .sort((a, b) => new Date(a) - new Date(b));
 
-                        const allLabels = dateLabels.map(date => {
+                        if (newDateLabels.length === 0) {
+                            setChartError('No data available for the selected date range.');
+                            setDateLabels([]);
+                            return;
+                        }
+
+                        const allLabels = newDateLabels.map(date => {
                             const d = new Date(date);
                             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                         });
@@ -507,7 +515,7 @@
                                 return `${title.toLowerCase() === 'already rich' ? 'Already Rich' : title} (${album})`;
                             })();
 
-                            const dailyData = dateLabels.map(date => {
+                            const dailyData = newDateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
                                 return entry ? entry.daily : null;
                             });
@@ -527,12 +535,14 @@
 
                         if (!allLabels.length || !datasets.length) {
                             setChartError('No data available for the selected date range.');
+                            setDateLabels([]);
                             return;
                         }
 
                         const ctx = canvasRef.current?.getContext('2d');
                         if (!ctx) {
                             setChartError('Failed to initialize chart.');
+                            setDateLabels([]);
                             return;
                         }
 
@@ -595,7 +605,7 @@
                                                 const dataIndex = context.dataIndex;
                                                 const key = compareItems[datasetIndex];
                                                 const history = historyData[key] || [];
-                                                const date = dateLabels[dataIndex];
+                                                const date = newDateLabels[dataIndex];
                                                 const entry = history.find(e => e.date === date);
                                                 return [
                                                     `Daily: ${context.parsed.y?.toLocaleString() || 'N/A'}`,
@@ -614,15 +624,12 @@
                         });
 
                         setChartError(null);
+                        setDateLabels(newDateLabels);
 
-                        return () => {
-                            if (chartRef.current) {
-                                chartRef.current.destroy();
-                            }
-                        };
                     } catch (e) {
                         console.error('Chart rendering error:', e.message, e.stack);
                         setChartError('Failed to render chart. Please try again.');
+                        setDateLabels([]);
                     }
                 }, [compareItems, dateRange, customStartDate, customEndDate, historyData, isAlbum]);
 
@@ -665,7 +672,9 @@
                 };
 
                 const showPercentageChange = compareItems.length === 1 && dateRange !== 'all';
-                const percentageChange = showPercentageChange ? calculateOverallPercentageChange(historyData[compareItems[0]] || [], dateLabels) : null;
+                const percentageChange = showPercentageChange && dateLabels.length > 0 
+                    ? calculateOverallPercentageChange(historyData[compareItems[0]] || [], dateLabels) 
+                    : null;
                 const changeColor = percentageChange && percentageChange !== 'N/A (First day was 0)' && percentageChange !== '0.00' 
                     ? parseFloat(percentageChange) >= 0 ? 'text-green-500' : 'text-red-500'
                     : 'text-white';
@@ -807,7 +816,7 @@
                                     <canvas ref={canvasRef}></canvas>
                                 </div>
                             )}
-                            {showPercentageChange && (
+                            {showPercentageChange && percentageChange !== null && (
                                 <div className={`percentage-change ${changeColor}`}>
                                     <h3 className="font-bold mb-2">Overall Percentage Change</h3>
                                     <p>{percentageChange}%</p>
