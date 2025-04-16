@@ -87,7 +87,6 @@
             const [error, setError] = React.useState(null);
             const [selectedSongs, setSelectedSongs] = React.useState([]);
             const [latestDate, setLatestDate] = React.useState(null);
-            const [dataGaps, setDataGaps] = React.useState([]);
             const [statsData, setStatsData] = React.useState({
                 headers: ['Total', 'Lead', 'Solo', 'Features'],
                 rows: [
@@ -114,36 +113,10 @@
                 loadAllData();
             }, []);
 
-            const fillMissingDays = (history, startDate, endDate) => {
-                const filledHistory = [];
-                let currentDate = new Date(startDate);
-                const end = new Date(endDate);
-                const existingDates = new Set(history.map(entry => entry.date));
-
-                while (currentDate <= end) {
-                    const dateStr = currentDate.toISOString().split('T')[0];
-                    const existingEntry = history.find(entry => entry.date === dateStr);
-                    if (existingEntry) {
-                        filledHistory.push(existingEntry);
-                    } else {
-                        filledHistory.push({
-                            date: dateStr,
-                            streams: filledHistory.length > 0 ? filledHistory[filledHistory.length - 1].streams : 0,
-                            daily: 0,
-                            album: history[0]?.album || ''
-                        });
-                    }
-                    currentDate.setDate(currentDate.getDate() + 1);
-                }
-
-                return filledHistory;
-            };
-
             const loadAllData = async () => {
                 try {
                     setLoading(true);
                     setError(null);
-                    setDataGaps([]);
 
                     const rawHistory = {};
                     let earliestDate = null;
@@ -151,7 +124,6 @@
                     let latestResponse = null;
                     let fileCount = 0;
                     const processedDates = [];
-                    const missingDates = [];
 
                     const startDate = new Date('2025-01-01');
                     const endDate = new Date();
@@ -187,7 +159,7 @@
                                     const title = row.Song || '';
                                     const album = row.Album || '';
                                     const daily = parseInt((row['Spotify daily'] || '0').replace(/,/g, '')) || 0;
-                                    if (title && daily > 0) {
+                                    if (title) {
                                         const key = title.toLowerCase() === 'already rich' ? 'Already Rich' : `${title}|${album}`;
                                         if (!rawHistory[key]) {
                                             rawHistory[key] = [];
@@ -212,11 +184,9 @@
                                 }
                             } else {
                                 console.warn(`CSV file for ${dateStr} not found (status: ${response.status})`);
-                                missingDates.push(dateStr);
                             }
                         } catch (err) {
                             console.warn(`Failed to load ${dateStr}.csv: ${err.message}`);
-                            missingDates.push(dateStr);
                         }
                         dateIterator.setDate(dateIterator.getDate() + 1);
                     }
@@ -227,18 +197,13 @@
 
                     const history = {};
                     Object.keys(rawHistory).forEach(key => {
-                        const sortedHistory = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
-                        history[key] = fillMissingDays(sortedHistory, earliestDate || startDate, latestDate || endDate);
+                        history[key] = rawHistory[key].sort((a, b) => new Date(a.date) - new Date(b.date));
                         if (history[key].length > 0) {
                             console.log(`Song: ${key}, Date range: ${history[key][0].date} to ${history[key][history[key].length - 1].date}, Entries: ${history[key].length}`);
                         }
                     });
 
                     console.log(`Processed ${fileCount} CSV files. Dates processed: ${processedDates.sort().join(', ')}`);
-                    console.log(`Missing dates: ${missingDates.join(', ') || 'None'}`);
-                    console.log(`Earliest date: ${earliestDate}, Latest date: ${latestDate}`);
-
-                    setDataGaps(missingDates);
 
                     const latestText = await latestResponse.text();
                     processCSVData(latestText);
@@ -411,19 +376,21 @@
                     }
 
                     try {
-                        let allLabels = [];
-                        let datasets = [];
                         let minDate = null;
                         let maxDate = null;
+                        const allDates = new Set();
 
-                        compareSongs.forEach((key, index) => {
-                            let history = historyData[key];
+                        // Collect all dates where at least one song has data
+                        compareSongs.forEach(key => {
+                            const history = historyData[key];
                             if (!history || !history.length) return;
 
                             const firstDate = new Date(history[0].date);
                             const lastDate = new Date(history[history.length - 1].date);
                             minDate = minDate ? new Date(Math.min(minDate, firstDate)) : firstDate;
                             maxDate = maxDate ? new Date(Math.max(maxDate, lastDate)) : lastDate;
+
+                            history.forEach(entry => allDates.add(entry.date));
                         });
 
                         let startDate, endDate;
@@ -442,39 +409,37 @@
                             }
                         }
 
-                        // Generate all possible dates in the range
-                        const dateLabels = [];
-                        let currentDate = new Date(startDate);
-                        while (currentDate <= endDate) {
-                            dateLabels.push(currentDate.toISOString().split('T')[0]);
-                            currentDate.setDate(currentDate.getDate() + 1);
-                        }
+                        // Filter dates to only those with data for at least one song
+                        const dateLabels = Array.from(allDates)
+                            .filter(date => {
+                                const d = new Date(date);
+                                return d >= startDate && d <= endDate;
+                            })
+                            .sort((a, b) => new Date(a) - new Date(b));
 
-                        allLabels = dateLabels.map(date => {
+                        const allLabels = dateLabels.map(date => {
                             const d = new Date(date);
                             return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
                         });
 
-                        compareSongs.forEach((key, index) => {
+                        const datasets = compareSongs.map((key, index) => {
                             let history = historyData[key];
-                            if (!history || !history.length) return;
+                            if (!history || !history.length) return null;
 
                             const [title, album] = key.split('|');
                             const displayTitle = title.toLowerCase() === 'already rich' ? 'Already Rich' : title;
 
-                            // Map history to all dates, filling gaps with zero
+                            // Only include data for dates in dateLabels
                             const dailyData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
-                                return entry ? entry.daily : 0;
+                                return entry ? entry.daily : null;
                             });
-                            const totalStreamsData = dateLabels.map((date, idx) => {
+                            const totalStreamsData = dateLabels.map(date => {
                                 const entry = history.find(e => e.date === date);
-                                if (entry) return entry.streams;
-                                // Use last known streams if available, else 0
-                                return idx > 0 ? (dailyData[idx - 1] ? totalStreamsData[idx - 1] : 0) : 0;
+                                return entry ? entry.streams : null;
                             });
 
-                            datasets.push({
+                            return {
                                 label: `${displayTitle} (${album})`,
                                 data: dailyData,
                                 borderColor: colors[index % colors.length],
@@ -482,9 +447,10 @@
                                 fill: true,
                                 tension: 0.3,
                                 pointRadius: 0,
-                                borderWidth: 2
-                            });
-                        });
+                                borderWidth: 2,
+                                spanGaps: true
+                            };
+                        }).filter(ds => ds !== null);
 
                         if (!allLabels.length || !datasets.length) {
                             setChartError('No data available for the selected date range.');
@@ -554,8 +520,8 @@
                                                 const date = dateLabels[dataIndex];
                                                 const entry = history.find(e => e.date === date);
                                                 return [
-                                                    `Daily: ${context.parsed.y.toLocaleString()}`,
-                                                    `Total: ${(entry?.streams || 0).toLocaleString()}`
+                                                    `Daily: ${context.parsed.y?.toLocaleString() || 'N/A'}`,
+                                                    `Total: ${entry?.streams?.toLocaleString() || 'N/A'}`
                                                 ];
                                             }
                                         }
@@ -632,11 +598,6 @@
                                 <h2 className="text-lg font-bold text-white sm:text-xl">
                                     Compare Songs
                                 </h2>
-                                {dataGaps.length > 0 && (
-                                    <p className="text-sm text-yellow-500 mt-2">
-                                        Note: Data is missing for {dataGaps.length} day(s). Gaps are filled with zero streams.
-                                    </p>
-                                )}
                                 <div className="mt-2">
                                     <input
                                         type="text"
@@ -869,11 +830,6 @@
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
                                     Error: {error}
-                                </div>
-                            )}
-                            {dataGaps.length > 0 && (
-                                <div className="mt-2 text-sm text-yellow-500">
-                                    Warning: Data is missing for {dataGaps.length} day(s): {dataGaps.join(', ')}
                                 </div>
                             )}
                         </div>
