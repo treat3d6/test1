@@ -1179,7 +1179,7 @@
                                     <canvas ref={canvasRef}></canvas>
                                     {showPercentageChange && percentageChange !== null && (
                                         <div className={`percentage-change ${changeColor}`}>
-                                            Change: ${percentageChange}%
+                                            Change: {percentageChange}%
                                         </div>
                                     )}
                                 </div>
@@ -1258,7 +1258,7 @@
                             </p>
                             {error && (
                                 <div className="mt-2 text-sm text-red-500">
-                                    Error: ${error}
+                                    Error: {error}
                                 </div>
                             )}
                         </div>
@@ -1275,17 +1275,17 @@
                                             <tr>
                                                 <th className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80"></th>
                                                 {statsData.headers.map((header, index) => (
-                                                    <th key={index} className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">${header}</th>
+                                                    <th key={index} className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{header}</th>
                                                 ))}
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {statsData.rows.map((row, index) => (
                                                 <tr key={index} className={`${index % 2 === 0 ? 'bg-black' : 'bg-white/5'} ${row.label === 'Streams' ? 'cursor-pointer hover:bg-white/10' : ''}`} onClick={() => row.label === 'Streams' && setShowTotalChart(true)}>
-                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/80">${row.label}</td>
+                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/80">{row.label}</td>
                                                     {row.values.map((value, valueIndex) => (
                                                         <td key={valueIndex} className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">
-                                                            ${formatNumber(value)}
+                                                            {formatNumber(value)}
                                                         </td>
                                                     ))}
                                                 </tr>
@@ -1342,14 +1342,14 @@
                                                     onClick={() => requestSort('title')}
                                                 >
                                                     {activeTab === 'songs' ? 'Song' : 'Album'} Title
-                                                    ${getSortIndicator('title')}
+                                                    {getSortIndicator('title')}
                                                 </th>
                                                 {activeTab === 'songs' && (
                                                     <th 
                                                         className="text-left px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
                                                         onClick={() => requestSort('album')}
                                                     >
-                                                        Album${getSortIndicator('album')}
+                                                        Album{getSortIndicator('album')}
                                                     </th>
                                                 )}
                                                 {activeTab === 'albums' && (
@@ -1359,13 +1359,13 @@
                                                     className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
                                                     onClick={() => requestSort('streams')}
                                                 >
-                                                    Streams${getSortIndicator('streams')}
+                                                    Streams{getSortIndicator('streams')}
                                                 </th>
                                                 <th 
                                                     className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm cursor-pointer hover:text-white text-white/80"
                                                     onClick={() => requestSort('daily')}
                                                 >
-                                                    Daily${getSortIndicator('daily')}
+                                                    Daily{getSortIndicator('daily')}
                                                 </th>
                                             </tr>
                                         </thead>
@@ -1376,16 +1376,16 @@
                                                     className={`${index % 2 === 0 ? 'bg-black' : 'bg-white/5'} cursor-pointer hover:bg-white/10`}
                                                     onClick={() => handleItemClick(item)}
                                                 >
-                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">${index + 1}</td>
-                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">${item.title}</td>
+                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{index + 1}</td>
+                                                    <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white">{item.title}</td>
                                                     {activeTab === 'songs' && (
-                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">${item.album}</td>
+                                                        <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/60">{item.album}</td>
                                                     )}
                                                     {activeTab === 'albums' && (
-                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">${item.tracks}</td>
+                                                        <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{item.tracks}</td>
                                                     )}
-                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">${formatNumber(item.streams)}</td>
-                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">${formatNumber(item.daily)}</td>
+                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.streams)}</td>
+                                                    <td className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">{formatNumber(item.daily)}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
