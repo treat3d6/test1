@@ -227,11 +227,13 @@
                                     }
                                 });
 
-                                rawTotalHistory.push({
-                                    date: dateStr,
-                                    streams: totalStreams,
-                                    daily: dailyTotal
-                                });
+                                if (dailyTotal >= 0) {
+                                    rawTotalHistory.push({
+                                        date: dateStr,
+                                        streams: totalStreams,
+                                        daily: dailyTotal
+                                    });
+                                }
 
                                 fileCount++;
                                 processedDates.push(dateStr);
@@ -366,59 +368,10 @@
             const TotalChart = ({ historyData, onClose }) => {
                 const chartRef = React.useRef(null);
                 const canvasRef = React.useRef(null);
-                const [dateRange, setDateRange] = React.useState('all');
-                const [customStartDate, setCustomStartDate] = React.useState('');
-                const [customEndDate, setCustomEndDate] = React.useState('');
-                const [tempStartDate, setTempStartDate] = React.useState('');
-                const [tempEndDate, setTempEndDate] = React.useState('');
-                const [showCustomPicker, setShowCustomPicker] = React.useState(false);
                 const [chartError, setChartError] = React.useState(null);
                 const [dateLabels, setDateLabels] = React.useState([]);
 
                 const colors = ['#60A5FA'];
-
-                const validateDates = (start, end, history) => {
-                    if (!start || !end || !history || !history.length) return false;
-                    try {
-                        const startDate = new Date(start);
-                        const endDate = new Date(end);
-                        if (isNaN(startDate) || isNaN(endDate) || startDate > endDate) return false;
-                        const minDate = new Date(history[0].date);
-                        const maxDate = new Date(history[history.length - 1].date);
-                        return startDate >= minDate && endDate <= maxDate;
-                    } catch (e) {
-                        console.error('Date validation error:', e);
-                        return false;
-                    }
-                };
-
-                const handleApplyCustomDates = () => {
-                    if (validateDates(tempStartDate, tempEndDate, historyData)) {
-                        setCustomStartDate(tempStartDate);
-                        setCustomEndDate(tempEndDate);
-                        setChartError(null);
-                    } else {
-                        setChartError('Invalid date range. Please select dates within the available data.');
-                    }
-                };
-
-                const calculateOverallPercentageChange = (history, dateLabels) => {
-                    if (!history || history.length < 1 || !dateLabels || dateLabels.length < 1) return null;
-                    const firstDate = new Date(dateLabels[0]);
-                    const lastDate = new Date(dateLabels[dateLabels.length - 1]);
-                    const firstEntry = history.find(e => new Date(e.date).toDateString() === firstDate.toDateString());
-                    const lastEntry = history.find(e => new Date(e.date).toDateString() === lastDate.toDateString());
-                    const firstDaily = firstEntry ? firstEntry.daily || 0 : 0;
-                    const lastDaily = lastEntry ? lastEntry.daily || 0 : 0;
-
-                    if (firstDaily === 0 && lastDaily === 0) return '0.00';
-                    if (firstDaily === 0 && lastDaily !== 0) return 'N/A (First day was 0)';
-                    if (firstDaily !== 0) {
-                        const change = ((lastDaily - firstDaily) / firstDaily) * 100;
-                        return change.toFixed(2);
-                    }
-                    return null;
-                };
 
                 React.useEffect(() => {
                     if (!historyData || !historyData.length) {
@@ -432,21 +385,8 @@
                         let minDate = new Date(historyData[0].date);
                         let maxDate = new Date(historyData[historyData.length - 1].date);
 
-                        let startDate, endDate;
-                        if (dateRange === 'custom' && customStartDate && customEndDate && 
-                            validateDates(customStartDate, customEndDate, historyData)) {
-                            startDate = new Date(customStartDate);
-                            endDate = new Date(customEndDate);
-                        } else {
-                            endDate = maxDate;
-                            if (dateRange === 'all') {
-                                startDate = minDate;
-                            } else {
-                                const days = parseInt(dateRange) || 7;
-                                startDate = new Date(endDate);
-                                startDate.setDate(endDate.getDate() - days + 1);
-                            }
-                        }
+                        let startDate = minDate;
+                        let endDate = maxDate;
 
                         const newDateLabels = allDates
                             .filter(date => {
@@ -468,7 +408,7 @@
 
                         const dailyData = newDateLabels.map(date => {
                             const entry = historyData.find(e => e.date === date);
-                            return entry ? entry.daily : null;
+                            return entry && entry.daily >= 0 ? entry.daily : null;
                         });
 
                         const dataset = {
@@ -526,12 +466,7 @@
                                 },
                                 plugins: {
                                     legend: {
-                                        display: true,
-                                        position: 'top',
-                                        labels: {
-                                            color: '#ffffff',
-                                            font: { size: 12 }
-                                        }
+                                        display: false
                                     },
                                     title: { display: false },
                                     tooltip: {
@@ -542,7 +477,7 @@
                                         borderColor: '#4b5563',
                                         borderWidth: 1,
                                         cornerRadius: 4,
-                                        displayColors: true,
+                                        displayColors: false,
                                         callbacks: {
                                             label: (context) => {
                                                 const dataIndex = context.dataIndex;
@@ -552,7 +487,11 @@
                                                     `Daily: ${context.parsed.y?.toLocaleString() || 'N/A'}`,
                                                     `Total: ${entry?.streams?.toLocaleString() || 'N/A'}`
                                                 ];
-                                            }
+                                            },
+                                            labelColor: () => ({
+                                                borderColor: 'transparent',
+                                                backgroundColor: 'transparent'
+                                            })
                                         }
                                     }
                                 },
@@ -572,40 +511,7 @@
                         setChartError('Failed to render chart. Please try again.');
                         setDateLabels([]);
                     }
-                }, [dateRange, customStartDate, customEndDate, historyData]);
-
-                const getDateRangeText = () => {
-                    if (!historyData || !historyData.length) return 'No data available';
-
-                    let minDate = new Date(historyData[0].date);
-                    let maxDate = new Date(historyData[historyData.length - 1].date);
-
-                    let startDate, endDate;
-                    if (dateRange === 'custom' && customStartDate && customEndDate && 
-                        validateDates(customStartDate, customEndDate, historyData)) {
-                        startDate = new Date(customStartDate);
-                        endDate = new Date(customEndDate);
-                    } else {
-                        endDate = maxDate;
-                        if (dateRange === 'all') {
-                            startDate = minDate;
-                        } else {
-                            const days = parseInt(dateRange) || 7;
-                            startDate = new Date(endDate);
-                            startDate.setDate(endDate.getDate() - days + 1);
-                        }
-                    }
-
-                    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
-                };
-
-                const showPercentageChange = dateRange !== 'all';
-                const percentageChange = showPercentageChange && dateLabels.length > 0 
-                    ? calculateOverallPercentageChange(historyData, dateLabels) 
-                    : null;
-                const changeColor = percentageChange && percentageChange !== 'N/A (First day was 0)' && percentageChange !== '0.00' 
-                    ? parseFloat(percentageChange) >= 0 ? 'text-green-500' : 'text-red-500'
-                    : 'text-white';
+                }, [historyData]);
 
                 return (
                     <div className="modal-overlay" onClick={onClose}>
@@ -617,68 +523,6 @@
                                 <h2 className="text-lg font-bold text-white sm:text-xl">
                                     Total Streams History
                                 </h2>
-                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4 gap-2">
-                                    <div>
-                                        <p className="text-sm text-white/60">{getDateRangeText()}</p>
-                                    </div>
-                                    <div className="flex gap-2 flex-wrap">
-                                        {['7', '28', '90', 'all'].map(range => (
-                                            <button
-                                                key={range}
-                                                className={`px-3 py-1 text-sm rounded-full border ${dateRange === range ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                                onClick={() => {
-                                                    setDateRange(range);
-                                                    setShowCustomPicker(false);
-                                                    setCustomStartDate('');
-                                                    setCustomEndDate('');
-                                                    setTempStartDate('');
-                                                    setTempEndDate('');
-                                                }}
-                                            >
-                                                {range === 'all' ? 'All' : `Last ${range} days`}
-                                            </button>
-                                        ))}
-                                        <button
-                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
-                                            onClick={() => {
-                                                setDateRange('custom');
-                                                setShowCustomPicker(true);
-                                                setTempStartDate('');
-                                                setTempEndDate('');
-                                            }}
-                                        >
-                                            Custom
-                                        </button>
-                                    </div>
-                                </div>
-                                {showCustomPicker && dateRange === 'custom' && (
-                                    <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                                        <div className="flex flex-col w-full sm:w-auto">
-                                            <label className="text-sm text-white/60">Start Date:</label>
-                                            <input
-                                                type="date"
-                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
-                                                value={tempStartDate}
-                                                onChange={(e) => setTempStartDate(e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="flex flex-col w-full sm:w-auto">
-                                            <label className="text-sm text-white/60">End Date:</label>
-                                            <input
-                                                type="date"
-                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
-                                                value={tempEndDate}
-                                                onChange={(e) => setTempEndDate(e.target.value)}
-                                            />
-                                        </div>
-                                        <button
-                                            className="px-4 py-1 text-sm rounded-lg border border-white/20 bg-black text-white hover:bg-white/10 mt-4 sm:mt-0 sm:ml-2"
-                                            onClick={handleApplyCustomDates}
-                                        >
-                                            Apply
-                                        </button>
-                                    </div>
-                                )}
                                 {chartError && (
                                     <div className="mt-4 text-sm text-red-500">
                                         {chartError}
@@ -688,11 +532,6 @@
                             {!chartError && (
                                 <div className="chart-container">
                                     <canvas ref={canvasRef}></canvas>
-                                    {showPercentageChange && percentageChange !== null && (
-                                        <div className={`percentage-change ${changeColor}`}>
-                                            Change: {percentageChange}%
-                                        </div>
-                                    )}
                                 </div>
                             )}
                         </div>
