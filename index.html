@@ -110,9 +110,11 @@
             const [songs, setSongs] = React.useState([]);
             const [historyData, setHistoryData] = React.useState({});
             const [albumHistoryData, setAlbumHistoryData] = React.useState({});
+            const [totalHistoryData, setTotalHistoryData] = React.useState([]);
             const [loading, setLoading] = React.useState(true);
             const [error, setError] = React.useState(null);
             const [selectedItems, setSelectedItems] = React.useState([]);
+            const [showTotalChart, setShowTotalChart] = React.useState(false);
             const [latestDate, setLatestDate] = React.useState(null);
             const [statsData, setStatsData] = React.useState({
                 headers: ['Total', 'Lead', 'Solo', 'Features'],
@@ -138,6 +140,7 @@
             React.useEffect(() => {
                 setHistoryData({});
                 setAlbumHistoryData({});
+                setTotalHistoryData([]);
                 loadAllData();
             }, []);
 
@@ -148,6 +151,7 @@
 
                     const rawHistory = {};
                     const rawAlbumHistory = {};
+                    const rawTotalHistory = [];
                     let earliestDate = null;
                     let latestDate = null;
                     let latestResponse = null;
@@ -184,6 +188,8 @@
                                     });
                                 });
 
+                                let dailyTotal = 0;
+                                let totalStreams = 0;
                                 parsedData.forEach(row => {
                                     const title = row.Song || '';
                                     const album = row.Album || '';
@@ -215,7 +221,16 @@
                                                 daily: daily
                                             });
                                         }
+
+                                        dailyTotal += daily;
+                                        totalStreams += total;
                                     }
+                                });
+
+                                rawTotalHistory.push({
+                                    date: dateStr,
+                                    streams: totalStreams,
+                                    daily: dailyTotal
                                 });
 
                                 fileCount++;
@@ -256,6 +271,7 @@
                     processCSVData(latestText);
                     setHistoryData(history);
                     setAlbumHistoryData(albumHistory);
+                    setTotalHistoryData(rawTotalHistory.sort((a, b) => new Date(a.date) - new Date(b.date)));
                     setLatestDate(latestDate);
                 } catch (error) {
                     console.error('Error loading data:', error);
@@ -345,6 +361,343 @@
                     };
                 });
                 setAlbums(albumStats);
+            };
+
+            const TotalChart = ({ historyData, onClose }) => {
+                const chartRef = React.useRef(null);
+                const canvasRef = React.useRef(null);
+                const [dateRange, setDateRange] = React.useState('all');
+                const [customStartDate, setCustomStartDate] = React.useState('');
+                const [customEndDate, setCustomEndDate] = React.useState('');
+                const [tempStartDate, setTempStartDate] = React.useState('');
+                const [tempEndDate, setTempEndDate] = React.useState('');
+                const [showCustomPicker, setShowCustomPicker] = React.useState(false);
+                const [chartError, setChartError] = React.useState(null);
+                const [dateLabels, setDateLabels] = React.useState([]);
+
+                const colors = ['#60A5FA'];
+
+                const validateDates = (start, end, history) => {
+                    if (!start || !end || !history || !history.length) return false;
+                    try {
+                        const startDate = new Date(start);
+                        const endDate = new Date(end);
+                        if (isNaN(startDate) || isNaN(endDate) || startDate > endDate) return false;
+                        const minDate = new Date(history[0].date);
+                        const maxDate = new Date(history[history.length - 1].date);
+                        return startDate >= minDate && endDate <= maxDate;
+                    } catch (e) {
+                        console.error('Date validation error:', e);
+                        return false;
+                    }
+                };
+
+                const handleApplyCustomDates = () => {
+                    if (validateDates(tempStartDate, tempEndDate, historyData)) {
+                        setCustomStartDate(tempStartDate);
+                        setCustomEndDate(tempEndDate);
+                        setChartError(null);
+                    } else {
+                        setChartError('Invalid date range. Please select dates within the available data.');
+                    }
+                };
+
+                const calculateOverallPercentageChange = (history, dateLabels) => {
+                    if (!history || history.length < 1 || !dateLabels || dateLabels.length < 1) return null;
+                    const firstDate = new Date(dateLabels[0]);
+                    const lastDate = new Date(dateLabels[dateLabels.length - 1]);
+                    const firstEntry = history.find(e => new Date(e.date).toDateString() === firstDate.toDateString());
+                    const lastEntry = history.find(e => new Date(e.date).toDateString() === lastDate.toDateString());
+                    const firstDaily = firstEntry ? firstEntry.daily || 0 : 0;
+                    const lastDaily = lastEntry ? lastEntry.daily || 0 : 0;
+
+                    if (firstDaily === 0 && lastDaily === 0) return '0.00';
+                    if (firstDaily === 0 && lastDaily !== 0) return 'N/A (First day was 0)';
+                    if (firstDaily !== 0) {
+                        const change = ((lastDaily - firstDaily) / firstDaily) * 100;
+                        return change.toFixed(2);
+                    }
+                    return null;
+                };
+
+                React.useEffect(() => {
+                    if (!historyData || !historyData.length) {
+                        setChartError('No data available for total streams.');
+                        setDateLabels([]);
+                        return;
+                    }
+
+                    try {
+                        const allDates = historyData.map(entry => entry.date);
+                        let minDate = new Date(historyData[0].date);
+                        let maxDate = new Date(historyData[historyData.length - 1].date);
+
+                        let startDate, endDate;
+                        if (dateRange === 'custom' && customStartDate && customEndDate && 
+                            validateDates(customStartDate, customEndDate, historyData)) {
+                            startDate = new Date(customStartDate);
+                            endDate = new Date(customEndDate);
+                        } else {
+                            endDate = maxDate;
+                            if (dateRange === 'all') {
+                                startDate = minDate;
+                            } else {
+                                const days = parseInt(dateRange) || 7;
+                                startDate = new Date(endDate);
+                                startDate.setDate(endDate.getDate() - days + 1);
+                            }
+                        }
+
+                        const newDateLabels = allDates
+                            .filter(date => {
+                                const d = new Date(date);
+                                return d >= startDate && d <= endDate;
+                            })
+                            .sort((a, b) => new Date(a) - new Date(b));
+
+                        if (newDateLabels.length === 0) {
+                            setChartError('No data available for the selected date range.');
+                            setDateLabels([]);
+                            return;
+                        }
+
+                        const allLabels = newDateLabels.map(date => {
+                            const d = new Date(date);
+                            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+                        });
+
+                        const dailyData = newDateLabels.map(date => {
+                            const entry = historyData.find(e => e.date === date);
+                            return entry ? entry.daily : null;
+                        });
+
+                        const dataset = {
+                            label: 'Total Daily Streams',
+                            data: dailyData,
+                            borderColor: colors[0],
+                            backgroundColor: colors[0] + '33',
+                            fill: true,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            borderWidth: 2,
+                            spanGaps: true
+                        };
+
+                        const ctx = canvasRef.current?.getContext('2d');
+                        if (!ctx) {
+                            setChartError('Failed to initialize chart.');
+                            setDateLabels([]);
+                            return;
+                        }
+
+                        if (chartRef.current) {
+                            chartRef.current.destroy();
+                        }
+
+                        chartRef.current = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: allLabels,
+                                datasets: [dataset]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: {
+                                        ticks: {
+                                            color: '#ffffff',
+                                            font: { size: 12 },
+                                            maxRotation: 45,
+                                            minRotation: 45
+                                        },
+                                        grid: { color: 'rgba(255, 255, 255, 0.1)' }
+                                    },
+                                    y: {
+                                        title: { display: false },
+                                        ticks: {
+                                            color: '#ffffff',
+                                            font: { size: 12 },
+                                            callback: (value) => value ? value.toLocaleString() : ''
+                                        },
+                                        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                                        beginAtZero: true
+                                    }
+                                },
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        position: 'top',
+                                        labels: {
+                                            color: '#ffffff',
+                                            font: { size: 12 }
+                                        }
+                                    },
+                                    title: { display: false },
+                                    tooltip: {
+                                        enabled: true,
+                                        backgroundColor: '#1f2937',
+                                        titleColor: '#ffffff',
+                                        bodyColor: '#ffffff',
+                                        borderColor: '#4b5563',
+                                        borderWidth: 1,
+                                        cornerRadius: 4,
+                                        displayColors: true,
+                                        callbacks: {
+                                            label: (context) => {
+                                                const dataIndex = context.dataIndex;
+                                                const date = newDateLabels[dataIndex];
+                                                const entry = historyData.find(e => e.date === date);
+                                                return [
+                                                    `Daily: ${context.parsed.y?.toLocaleString() || 'N/A'}`,
+                                                    `Total: ${entry?.streams?.toLocaleString() || 'N/A'}`
+                                                ];
+                                            }
+                                        }
+                                    }
+                                },
+                                interaction: {
+                                    intersect: false,
+                                    mode: 'nearest',
+                                    axis: 'x'
+                                }
+                            }
+                        });
+
+                        setChartError(null);
+                        setDateLabels(newDateLabels);
+
+                    } catch (e) {
+                        console.error('Chart rendering error:', e.message, e.stack);
+                        setChartError('Failed to render chart. Please try again.');
+                        setDateLabels([]);
+                    }
+                }, [dateRange, customStartDate, customEndDate, historyData]);
+
+                const getDateRangeText = () => {
+                    if (!historyData || !historyData.length) return 'No data available';
+
+                    let minDate = new Date(historyData[0].date);
+                    let maxDate = new Date(historyData[historyData.length - 1].date);
+
+                    let startDate, endDate;
+                    if (dateRange === 'custom' && customStartDate && customEndDate && 
+                        validateDates(customStartDate, customEndDate, historyData)) {
+                        startDate = new Date(customStartDate);
+                        endDate = new Date(customEndDate);
+                    } else {
+                        endDate = maxDate;
+                        if (dateRange === 'all') {
+                            startDate = minDate;
+                        } else {
+                            const days = parseInt(dateRange) || 7;
+                            startDate = new Date(endDate);
+                            startDate.setDate(endDate.getDate() - days + 1);
+                        }
+                    }
+
+                    return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
+                };
+
+                const showPercentageChange = dateRange !== 'all';
+                const percentageChange = showPercentageChange && dateLabels.length > 0 
+                    ? calculateOverallPercentageChange(historyData, dateLabels) 
+                    : null;
+                const changeColor = percentageChange && percentageChange !== 'N/A (First day was 0)' && percentageChange !== '0.00' 
+                    ? parseFloat(percentageChange) >= 0 ? 'text-green-500' : 'text-red-500'
+                    : 'text-white';
+
+                return (
+                    <div className="modal-overlay" onClick={onClose}>
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <button className="close-button" onClick={onClose}>
+                                ×
+                            </button>
+                            <div className="mb-4">
+                                <h2 className="text-lg font-bold text-white sm:text-xl">
+                                    Total Streams History
+                                </h2>
+                                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4 gap-2">
+                                    <div>
+                                        <p className="text-sm text-white/60">{getDateRangeText()}</p>
+                                    </div>
+                                    <div className="flex gap-2 flex-wrap">
+                                        {['7', '28', '90', 'all'].map(range => (
+                                            <button
+                                                key={range}
+                                                className={`px-3 py-1 text-sm rounded-full border ${dateRange === range ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                                onClick={() => {
+                                                    setDateRange(range);
+                                                    setShowCustomPicker(false);
+                                                    setCustomStartDate('');
+                                                    setCustomEndDate('');
+                                                    setTempStartDate('');
+                                                    setTempEndDate('');
+                                                }}
+                                            >
+                                                {range === 'all' ? 'All' : `Last ${range} days`}
+                                            </button>
+                                        ))}
+                                        <button
+                                            className={`px-3 py-1 text-sm rounded-full border ${dateRange === 'custom' ? 'bg-white/20 border-white/40' : 'border-white/20'} text-white hover:bg-white/10`}
+                                            onClick={() => {
+                                                setDateRange('custom');
+                                                setShowCustomPicker(true);
+                                                setTempStartDate('');
+                                                setTempEndDate('');
+                                            }}
+                                        >
+                                            Custom
+                                        </button>
+                                    </div>
+                                </div>
+                                {showCustomPicker && dateRange === 'custom' && (
+                                    <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                                        <div className="flex flex-col w-full sm:w-auto">
+                                            <label className="text-sm text-white/60">Start Date:</label>
+                                            <input
+                                                type="date"
+                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
+                                                value={tempStartDate}
+                                                onChange={(e) => setTempStartDate(e.target.value)}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col w-full sm:w-auto">
+                                            <label className="text-sm text-white/60">End Date:</label>
+                                            <input
+                                                type="date"
+                                                className="mt-1 px-3 py-1 text-sm rounded-lg border border-white/20 bg-black text-white focus:outline-none focus:border-white/40 w-full"
+                                                value={tempEndDate}
+                                                onChange={(e) => setTempEndDate(e.target.value)}
+                                            />
+                                        </div>
+                                        <button
+                                            className="px-4 py-1 text-sm rounded-lg border border-white/20 bg-black text-white hover:bg-white/10 mt-4 sm:mt-0 sm:ml-2"
+                                            onClick={handleApplyCustomDates}
+                                        >
+                                            Apply
+                                        </button>
+                                    </div>
+                                )}
+                                {chartError && (
+                                    <div className="mt-4 text-sm text-red-500">
+                                        {chartError}
+                                    </div>
+                                )}
+                            </div>
+                            {!chartError && (
+                                <div className="chart-container">
+                                    <canvas ref={canvasRef}></canvas>
+                                    {showPercentageChange && percentageChange !== null && (
+                                        <div className={`percentage-change ${changeColor}`}>
+                                            Change: {percentageChange}%
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
             };
 
             const ComparisonChart = ({ itemKeys, itemsData, historyData, isAlbum, onClose }) => {
@@ -927,7 +1280,7 @@
                                         </thead>
                                         <tbody>
                                             {statsData.rows.map((row, index) => (
-                                                <tr key={index} className={index % 2 === 0 ? 'bg-black' : 'bg-white/5'}>
+                                                <tr key={index} className={`${index % 2 === 0 ? 'bg-black' : 'bg-white/5'} ${row.label === 'Streams' ? 'cursor-pointer hover:bg-white/10' : ''}`} onClick={() => row.label === 'Streams' && setShowTotalChart(true)}>
                                                     <td className="px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-white/80">{row.label}</td>
                                                     {row.values.map((value, valueIndex) => (
                                                         <td key={valueIndex} className="text-right px-2 sm:px-4 py-2 text-xs sm:text-sm text-white/80">
@@ -1045,6 +1398,12 @@
                                         historyData={activeTab === 'songs' ? historyData : albumHistoryData}
                                         isAlbum={activeTab === 'albums'}
                                         onClose={() => setSelectedItems([])}
+                                    />
+                                )}
+                                {showTotalChart && (
+                                    <TotalChart 
+                                        historyData={totalHistoryData}
+                                        onClose={() => setShowTotalChart(false)}
                                     />
                                 )}
                             </>
